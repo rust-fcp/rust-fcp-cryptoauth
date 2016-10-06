@@ -1,6 +1,8 @@
 [package]
-name = "fcp-cryptoauth"
+name = "fcp_cryptoauth"
 version = "0.1.0"
 authors = ["Valentin Lorentz <progval+fcp@progval.net>"]
 
 [dependencies]
+rust_sodium = "~0.1.2"
+byteorder = "~0.5.3"
