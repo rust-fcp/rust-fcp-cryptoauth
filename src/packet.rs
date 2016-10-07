@@ -91,36 +91,44 @@ impl Packet {
         }
     }
 
+    /// Returns a copy of the packet's Authorization Challenge.
     pub fn auth_challenge(&self) -> [u8; 12] {
         let mut auth_challenge = [0u8; 12];
         auth_challenge.copy_from_slice(&self.raw[4..16]);
         auth_challenge
     }
 
+    /// Returns a copy of the packet's Nonce.
     pub fn random_nonce(&self) -> [u8; 24] {
         let mut random_nonce = [0u8; 24];
         random_nonce.copy_from_slice(&self.raw[16..40]);
         random_nonce
     }
 
+    /// Returns a copy of the packet's sender permanent public key,
+    /// as a byte array.
     pub fn sender_perm_pub_key(&self) -> [u8; 32] {
         let mut sender_perm_pub_key = [0u8; 32];
         sender_perm_pub_key.copy_from_slice(&self.raw[40..72]);
         sender_perm_pub_key
     }
 
+    /// Returns a copy of the packet's Message Authentication Code.
     pub fn msg_auth_code(&self) -> [u8; 16] {
         let mut msg_auth_code = [0u8; 16];
         msg_auth_code.copy_from_slice(&self.raw[72..88]);
         msg_auth_code
     }
 
+    /// Returns a copy of the packet's sender temporary public key,
+    /// encrypted and as a byte array.
     pub fn sender_encrypted_temp_pub_key(&self) -> [u8; 32] {
         let mut sender_encrypted_temp_pub_key = [0u8; 32];
         sender_encrypted_temp_pub_key.copy_from_slice(&self.raw[88..120]);
         sender_encrypted_temp_pub_key
     }
 
+    /// Returns a reference to the packet's encrypted “piggy-backed” data.
     pub fn encrypted_data(&self) -> &[u8] {
         // Returning a reference to a slice here because:
         // * the data can potentially be large
@@ -161,6 +169,7 @@ impl PacketBuilder {
         }
     }
 
+    /// Sets the session state of the packet.
     pub fn session_state(mut self, session_state: &SessionState) -> PacketBuilder {
         self.session_state = true;
         let value = match *session_state {
@@ -173,36 +182,43 @@ impl PacketBuilder {
         self
     }
 
+    /// Sets the packet's Authorization Challenge.
     pub fn auth_challenge(mut self, auth_challenge: &[u8; 12]) -> PacketBuilder {
         self.auth_challenge = true;
         self.raw[4..16].clone_from_slice(auth_challenge);
         self
     }
 
+    /// Sets the packet's Nonce.
     pub fn random_nonce(mut self, random_nonce: &[u8; 24]) -> PacketBuilder {
         self.random_nonce = true;
         self.raw[16..40].clone_from_slice(random_nonce);
         self
     }
 
+    /// Sets the packet's sender permanent public key, provided as a byte array.
     pub fn sender_perm_pub_key(mut self, sender_perm_pub_key: &[u8; 32]) -> PacketBuilder {
         self.sender_perm_pub_key = true;
         self.raw[40..72].clone_from_slice(sender_perm_pub_key);
         self
     }
 
+    /// Sets the packet's Message Authentication Code.
     pub fn msg_auth_code(mut self, msg_auth_code: &[u8; 16]) -> PacketBuilder {
         self.msg_auth_code = true;
         self.raw[72..88].clone_from_slice(msg_auth_code);
         self
     }
 
+    /// Sets the packet's sender temporary public key, provided encrypted and
+    /// as a byte array.
     pub fn sender_encrypted_temp_pub_key(mut self, sender_encrypted_temp_pub_key: &[u8; 32]) -> PacketBuilder {
         self.sender_encrypted_temp_pub_key = true;
         self.raw[88..120].clone_from_slice(sender_encrypted_temp_pub_key);
         self
     }
 
+    /// Sets the packet's encrypted “piggy-backed” data.
     pub fn encrypted_data(mut self, mut encrypted_data: Vec<u8>) -> PacketBuilder {
         self.raw.truncate(120);
         self.raw.append(&mut encrypted_data);
@@ -210,7 +226,7 @@ impl PacketBuilder {
     }
 
     /// If all mandatory fields have been provided, returns the constructed packet.
-    /// Otherwise, returns `Err(session_state, auth_challenge, random_nonce,
+    /// Otherwise, returns `Err([session_state, auth_challenge, random_nonce,
     /// sender_perm_pub_key, msg_auth_code, sender_encrypted_temp_pub_key])`,
     /// Each of the items of the array being a boolean set to true if and only
     /// if the corresponding mandatory field was provided.
