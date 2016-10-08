@@ -31,11 +31,30 @@
 //! # let (their_pk, _) = gen_keypair();
 //! # let session = Session::new(my_pk, my_sk, their_pk);
 //!
-//! let mut password = "foobar".to_owned().into_bytes();
+//! let password = "foo".to_owned().into_bytes();
 //! let challenge = AuthChallenge::Password { password: password };
 //! let bytes = challenge.to_bytes(&session);
 //! assert_eq!(bytes[0], 1u8);
-//! assert!(bytes[1..8] != [0, 0, 0, 0, 0, 0, 0]); // Hashed data
+//! assert_eq!(bytes[1..8], [0xad, 0xe8, 0x8f, 0xc7, 0xa2, 0x14, 0x98]); // sha256(sha256("foo"))[1..8]
+//! assert_eq!(bytes[8..12], [0, 0, 0, 0]);
+//! ```
+//!
+//! Login+Password challenge:
+//!
+//! ```
+//! use fcp_cryptoauth::authentication::*;
+//! # use fcp_cryptoauth::session::Session;
+//! # use fcp_cryptoauth::keys::gen_keypair;
+//! # let (my_pk, my_sk) = gen_keypair();
+//! # let (their_pk, _) = gen_keypair();
+//! # let session = Session::new(my_pk, my_sk, their_pk);
+//!
+//! let login = "foo".to_owned().into_bytes();
+//! let password = "bar".to_owned().into_bytes();
+//! let challenge = AuthChallenge::LoginPassword { login: login, password: password };
+//! let bytes = challenge.to_bytes(&session);
+//! assert_eq!(bytes[0], 1u8);
+//! assert_eq!(bytes[1..8], [0x26, 0xb4, 0x6b, 0x68, 0xff, 0xc6, 0x8f]); // sha256("bar")[1..8]
 //! assert_eq!(bytes[8..12], [0, 0, 0, 0]);
 //! ```
 
@@ -81,8 +100,13 @@ impl AuthChallenge {
                     0,       0,       0,       0,
                 ]
             },
-            AuthChallenge::LoginPassword { password: _, login: _ } => {
-                unimplemented!() // TODO
+            AuthChallenge::LoginPassword { password: _, ref login } => {
+                let hash = sha256::hash(&login).0;
+                [
+                    1,       hash[1], hash[2], hash[3],
+                    hash[4], hash[5], hash[6], hash[7],
+                    0,       0,       0,       0,
+                ]
             },
         }
     }
