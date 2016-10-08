@@ -19,7 +19,6 @@ const BASE32_DECODING_TABLE: [u8; 128] = [
 // Panics if the array is too large.
 // Returns Err(c) if a character c is not valid in a Base32 string.
 fn decode_base32(encoded: &[u8]) -> Result<Vec<u8>, u8> {
-    println!("{:?}", encoded.len()*5);
     let mut res = Vec::with_capacity(encoded.len()*5/8);
     let mut last_word_length = 0;
     let mut last_word = 0u16;
@@ -63,7 +62,8 @@ fn test_decode_base32() {
 ///
 /// ```
 /// # use fcp_cryptoauth::keys::*;
-/// PublicKey::new_from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k");
+/// let key = PublicKey::new_from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k");
+/// assert!(key.is_some());
 /// ```
 pub struct PublicKey {
     pub crypto_box_key: crypto_box::PublicKey,
@@ -76,8 +76,10 @@ impl PublicKey {
     ///
     /// TODO: better errors
     pub fn new_from_base32(characters: &[u8]) -> Option<PublicKey> {
-        assert_eq!(characters[characters.len()-2..], b".k".to_owned());
-        if let Ok(bytes) = decode_base32(characters) {
+        assert!(characters.len() >= 2);
+        let length: usize = characters.len()-2;
+        assert_eq!(characters[length..], b".k".to_owned());
+        if let Ok(bytes) = decode_base32(&characters[..length]) {
             if let Some(key) = crypto_box::PublicKey::from_slice(&bytes) {
                 Some(PublicKey { crypto_box_key: key })
             }
