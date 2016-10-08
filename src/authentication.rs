@@ -103,7 +103,7 @@ impl AuthChallenge {
             AuthChallenge::LoginPassword { password: _, ref login } => {
                 let hash = sha256::hash(&login).0;
                 [
-                    1,       hash[1], hash[2], hash[3],
+                    2,       hash[1], hash[2], hash[3],
                     hash[4], hash[5], hash[6], hash[7],
                     0,       0,       0,       0,
                 ]
