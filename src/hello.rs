@@ -34,6 +34,8 @@ pub fn create_hello(session_: &mut session::Session, auth_challenge: authenticat
         }
     };
     let shared_secret = sha256::hash(&shared_secret_preimage).0;
+    assert_eq!(session_.shared_secret, None);
+    session_.shared_secret = Some(shared_secret);
 
     // Paragraph 4: temporary keys are generated in Session::new()
 

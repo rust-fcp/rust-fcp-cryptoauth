@@ -17,6 +17,8 @@ pub struct Session {
 
     pub my_temp_pk: crypto_box::PublicKey,
     pub my_temp_sk: crypto_box::SecretKey,
+
+    pub shared_secret: Option<[u8; 32]>,
 }
 
 impl Session {
@@ -34,6 +36,8 @@ impl Session {
 
             my_temp_pk: my_temp_pk,
             my_temp_sk: my_temp_sk,
+
+            shared_secret: None,
         }
     }
 }
