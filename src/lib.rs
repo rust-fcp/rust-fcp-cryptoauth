@@ -1,3 +1,4 @@
+extern crate hex;
 extern crate rust_sodium;
 
 pub mod keys;

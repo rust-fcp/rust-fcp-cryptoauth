@@ -6,3 +6,4 @@ authors = ["Valentin Lorentz <progval+fcp@progval.net>"]
 [dependencies]
 rust_sodium = "~0.1.2"
 byteorder = "~0.5.3"
+hex = "~0.2.0"

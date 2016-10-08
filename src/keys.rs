@@ -1,4 +1,6 @@
+extern crate hex;
 extern crate rust_sodium;
+use hex::FromHex;
 use rust_sodium::crypto::box_::curve25519xsalsa20poly1305 as crypto_box;
 
 pub const PUBLIC_KEY_BYTES: usize = crypto_box::PUBLICKEYBYTES;
@@ -62,8 +64,10 @@ fn test_decode_base32() {
 ///
 /// ```
 /// # use fcp_cryptoauth::keys::*;
-/// let key = PublicKey::new_from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k");
-/// assert!(key.is_some());
+/// let pk = PublicKey::new_from_base32(b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k");
+/// assert!(pk.is_some());
+/// let sk = SecretKey::new_from_hex(b"ac3e53b518e68449692b0b2f2926ef2fdc1eac5b9dbd10a48114263b8c8ed12e");
+/// assert!(sk.is_some());
 /// ```
 pub struct PublicKey {
     pub crypto_box_key: crypto_box::PublicKey,
@@ -101,8 +105,26 @@ pub struct SecretKey {
     pub crypto_box_key: crypto_box::SecretKey,
 }
 impl SecretKey {
-    pub fn new(bytes: &[u8; SECRET_KEY_BYTES]) -> SecretKey {
-        SecretKey { crypto_box_key: crypto_box::SecretKey::from_slice(bytes).unwrap(), }
+    pub fn new(bytes: &[u8; SECRET_KEY_BYTES]) -> Option<SecretKey> {
+        crypto_box::SecretKey::from_slice(bytes)
+                .map(|key| SecretKey { crypto_box_key: key, })
+    }
+
+    pub fn new_from_hex(characters: &[u8]) -> Option<SecretKey> {
+        let res = Vec::from_hex(characters);
+        match res {
+            Ok(vec) => {
+                if vec.len() == 32 {
+                    let mut bytes = [0u8; 32];
+                    bytes.copy_from_slice(&vec);
+                    SecretKey::new(&bytes)
+                }
+                else {
+                    None
+                }
+            },
+            Err(_) => None,
+        }
     }
 
     pub fn bytes(&self) -> &[u8; SECRET_KEY_BYTES] {
