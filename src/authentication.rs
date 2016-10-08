@@ -53,7 +53,7 @@
 //! let password = "bar".to_owned().into_bytes();
 //! let challenge = AuthChallenge::LoginPassword { login: login, password: password };
 //! let bytes = challenge.to_bytes(&session);
-//! assert_eq!(bytes[0], 1u8);
+//! assert_eq!(bytes[0], 2u8);
 //! assert_eq!(bytes[1..8], [0x26, 0xb4, 0x6b, 0x68, 0xff, 0xc6, 0x8f]); // sha256("bar")[1..8]
 //! assert_eq!(bytes[8..12], [0, 0, 0, 0]);
 //! ```
