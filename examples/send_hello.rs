@@ -1,6 +1,9 @@
+extern crate hex;
 extern crate fcp_cryptoauth;
 
 use std::net::{UdpSocket, SocketAddr, IpAddr, Ipv6Addr};
+
+use hex::ToHex;
 
 use fcp_cryptoauth::authentication::AuthChallenge;
 use fcp_cryptoauth::session::Session;
@@ -18,9 +21,10 @@ pub fn main() {
     let password = "bar".to_owned().into_bytes();
     let challenge = AuthChallenge::LoginPassword { login: login, password: password };
     let hello = create_hello(&mut session, challenge);
+    println!("0x{}", session.shared_secret.unwrap().to_hex());
+    println!("{:?}", hello);
     let bytes = hello.raw;
 
-    println!("{:?}", bytes);
     let sock = UdpSocket::bind("[::1]:12345").unwrap();
     let dest = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 54321);
     sock.send_to(&bytes, dest).unwrap();

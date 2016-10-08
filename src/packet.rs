@@ -52,7 +52,11 @@
 //!         ])
 //! ```
 
+extern crate hex;
 extern crate byteorder;
+use std::fmt;
+
+use hex::ToHex;
 use packet::byteorder::ByteOrder;
 
 /// Represents the CryptoAuth session state, as defined by
@@ -69,9 +73,32 @@ pub enum SessionState {
 
 /// Represents a raw CryptoAuth packet, as defined by
 /// https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#packet-layout
-#[derive(Debug)]
 pub struct Packet {
     pub raw: Vec<u8>,
+}
+
+impl fmt::Debug for Packet {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Packet {{
+        raw:                     0x{},
+        state:                   {:?},
+        auth_challenge:          0x{},
+        nonce:                   0x{},
+        sender_perm_pub_key:     0x{},
+        msg_auth_code:           0x{},
+        sender_enc_temp_pub_key: 0x{},
+        encrypted_data:          0x{}
+        }}",
+            self.raw.to_vec().to_hex(),
+            self.session_state(),
+            self.auth_challenge().to_vec().to_hex(),
+            self.random_nonce().to_vec().to_hex(),
+            self.sender_perm_pub_key().to_vec().to_hex(),
+            self.msg_auth_code().to_vec().to_hex(),
+            self.sender_encrypted_temp_pub_key().to_vec().to_hex(),
+            self.encrypted_data().to_vec().to_hex()
+            )
+    }
 }
 
 impl Packet {
