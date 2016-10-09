@@ -66,6 +66,7 @@ use session::Session;
 
 /// Represents an authorization method and its data, as defined by
 /// https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#authorization-challenges
+#[derive(Clone)]
 pub enum AuthChallenge {
     None,
     Password { password: Vec<u8> },

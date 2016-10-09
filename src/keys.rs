@@ -70,6 +70,8 @@ fn test_decode_base32() {
 /// assert!(sk.is_some());
 /// ```
 #[derive(Clone)]
+#[derive(Eq)]
+#[derive(PartialEq)]
 pub struct PublicKey {
     pub crypto_box_key: crypto_box::PublicKey,
 }

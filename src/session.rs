@@ -9,6 +9,9 @@ use rust_sodium::crypto::box_::curve25519xsalsa20poly1305 as crypto_box;
 
 use keys::{SecretKey, PublicKey};
 
+#[derive(Debug)]
+#[derive(Eq)]
+#[derive(PartialEq)]
 pub enum SessionState {
     Uninitialized,
     ReceivedHello,

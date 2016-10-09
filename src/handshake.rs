@@ -52,8 +52,12 @@ pub fn create_next_handshake_packet(session: &mut Session, auth_challenge: authe
             hash_password(password, &session.my_perm_sk, &session.their_perm_pk)
         }
     };
-    assert_eq!(session.shared_secret, None);
-    session.shared_secret = Some(shared_secret);
+    if let Some(known_secret) = session.shared_secret {
+        assert_eq!(known_secret, shared_secret);
+    }
+    else {
+        session.shared_secret = Some(shared_secret);
+    }
 
     /////////////////////////////////////
     // Paragraph 4
@@ -123,7 +127,7 @@ pub fn create_next_handshake_packet(session: &mut Session, auth_challenge: authe
 /// Read a network packet, assumed to be an Hello or a RepeatHello.
 ///
 /// TODO: improve error return
-pub fn parse_handshake_packet<'a, Peer: Clone>(session: &mut Session, my_perm_pk: keys::PublicKey, my_perm_sk: keys::SecretKey, password_store: &'a PasswordStore<Peer>, packet: &Packet) -> Option<&'a Peer> {
+pub fn parse_handshake_packet<'a, Peer: Clone>(session: &mut Session, password_store: &'a PasswordStore<Peer>, packet: &Packet) -> Option<&'a Peer> {
     // Check the packet type vs session state
     match packet.packet_type() {
         Err(_) => panic!("Non-handshake packet passed to parse_handshake_packet"),
@@ -149,9 +153,14 @@ pub fn parse_handshake_packet<'a, Peer: Clone>(session: &mut Session, my_perm_pk
             
 
     let their_perm_pk = keys::PublicKey { crypto_box_key: crypto_box::PublicKey::from_slice(&packet.sender_perm_pub_key()).unwrap() };
+    if session.their_perm_pk != their_perm_pk {
+        // Wrong key. Drop the packet.
+        return None;
+    }
+
     for &(ref password, ref peer) in candidates {
         let nonce = crypto_box::Nonce::from_slice(&packet.random_nonce()).unwrap();
-        let shared_secret = hash_password(password, &my_perm_sk, &their_perm_pk);
+        let shared_secret = hash_password(password, &session.my_perm_sk, &their_perm_pk);
         let shared_secret_key = crypto_box::PrecomputedKey::from_slice(&shared_secret).unwrap();
         let packet_end = open_packet_end(packet.sealed_data(), &shared_secret_key, &nonce);
         if let Some((their_temp_pk, data)) = packet_end {
@@ -171,7 +180,7 @@ pub fn parse_handshake_packet<'a, Peer: Clone>(session: &mut Session, my_perm_pk
 }
 
 #[test]
-fn test_parse_hello_password() {
+fn test_parse_handshake_password() {
     use hex::FromHex;
     use keys::{PublicKey, SecretKey};
 
@@ -193,7 +202,7 @@ fn test_parse_hello_password() {
 }
 
 #[test]
-fn test_parse_hello_login() {
+fn test_parse_handshake_login() {
     use hex::FromHex;
     use keys::{PublicKey, SecretKey};
 
