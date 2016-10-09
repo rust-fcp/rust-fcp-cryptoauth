@@ -4,9 +4,9 @@
 //! # Example
 //!
 //! ```
-//! use fcp_cryptoauth::packet::{PacketBuilder, Packet, SessionState};
+//! use fcp_cryptoauth::packet::{PacketBuilder, Packet, PacketType};
 //! let packet = PacketBuilder::new()
-//!         .session_state(&SessionState::Key)
+//!         .packet_type(&PacketType::Key)
 //!         .auth_challenge(&[1u8; 12])
 //!         .random_nonce(&[2u8; 24])
 //!         .sender_perm_pub_key(&[3u8; 32])
@@ -15,7 +15,7 @@
 //!         .encrypted_data(vec![6u8, 7u8, 8u8])
 //!         .finalize()
 //!         .unwrap();
-//! assert_eq!(packet.session_state(), Ok(SessionState::Key));
+//! assert_eq!(packet.packet_type(), Ok(PacketType::Key));
 //! assert_eq!(packet.auth_challenge(), [1u8; 12]);
 //! assert_eq!(packet.random_nonce(), [2u8; 24]);
 //! assert_eq!(packet.sender_perm_pub_key(), [3u8; 32]);
@@ -64,7 +64,7 @@ use packet::byteorder::ByteOrder;
 #[derive(Eq)]
 #[derive(PartialEq)]
 #[derive(Debug)]
-pub enum SessionState {
+pub enum PacketType {
     Hello,       // 0u32
     RepeatHello, // 1u32
     Key,         // 2u32
@@ -90,7 +90,7 @@ impl fmt::Debug for Packet {
         encrypted_data:          0x{}
         }}",
             self.raw.to_vec().to_hex(),
-            self.session_state(),
+            self.packet_type(),
             self.auth_challenge().to_vec().to_hex(),
             self.random_nonce().to_vec().to_hex(),
             self.sender_perm_pub_key().to_vec().to_hex(),
@@ -108,12 +108,12 @@ impl Packet {
     ///
     /// Returns Err(value of field) if the session state field is set
     /// to an unknown value.
-    pub fn session_state(&self) -> Result<SessionState, u32> {
+    pub fn packet_type(&self) -> Result<PacketType, u32> {
         match byteorder::BigEndian::read_u32(&self.raw[0..4]) {
-            0u32 => Ok(SessionState::Hello),
-            1u32 => Ok(SessionState::RepeatHello),
-            2u32 => Ok(SessionState::Key),
-            3u32 => Ok(SessionState::RepeatKey),
+            0u32 => Ok(PacketType::Hello),
+            1u32 => Ok(PacketType::RepeatHello),
+            2u32 => Ok(PacketType::Key),
+            3u32 => Ok(PacketType::RepeatKey),
             n => Err(n),
         }
     }
@@ -179,7 +179,7 @@ pub struct PacketBuilder {
 
     // Store whether these fields have been set.
     // Checked by the finalization method.
-    session_state: bool,
+    packet_type: bool,
     auth_challenge: bool,
     random_nonce: bool,
     sender_perm_pub_key: bool,
@@ -193,7 +193,7 @@ impl PacketBuilder {
         PacketBuilder {
             raw: vec![0; 120],
 
-            session_state: false,
+            packet_type: false,
             auth_challenge: false,
             random_nonce: false,
             sender_perm_pub_key: false,
@@ -204,13 +204,13 @@ impl PacketBuilder {
     }
 
     /// Sets the session state of the packet.
-    pub fn session_state(mut self, session_state: &SessionState) -> PacketBuilder {
-        self.session_state = true;
-        let value = match *session_state {
-            SessionState::Hello => 0u32,
-            SessionState::RepeatHello => 1u32,
-            SessionState::Key => 2u32,
-            SessionState::RepeatKey => 3u32,
+    pub fn packet_type(mut self, packet_type: &PacketType) -> PacketBuilder {
+        self.packet_type = true;
+        let value = match *packet_type {
+            PacketType::Hello => 0u32,
+            PacketType::RepeatHello => 1u32,
+            PacketType::Key => 2u32,
+            PacketType::RepeatKey => 3u32,
         };
         byteorder::BigEndian::write_u32(&mut self.raw[0..4], value);
         self
@@ -260,12 +260,12 @@ impl PacketBuilder {
     }
 
     /// If all mandatory fields have been provided, returns the constructed packet.
-    /// Otherwise, returns `Err([session_state, auth_challenge, random_nonce,
+    /// Otherwise, returns `Err([packet_type, auth_challenge, random_nonce,
     /// sender_perm_pub_key, msg_auth_code, sender_encrypted_temp_pub_key])`,
     /// Each of the items of the array being a boolean set to true if and only
     /// if the corresponding mandatory field was provided.
     pub fn finalize(self) -> Result<Packet, [bool; 6]> {
-        let booleans = [self.session_state, self.auth_challenge, self.random_nonce, self.sender_perm_pub_key, self.msg_auth_code, self.sender_encrypted_temp_pub_key];
+        let booleans = [self.packet_type, self.auth_challenge, self.random_nonce, self.sender_perm_pub_key, self.msg_auth_code, self.sender_encrypted_temp_pub_key];
         if booleans.contains(&false) {
             Err(booleans)
         }

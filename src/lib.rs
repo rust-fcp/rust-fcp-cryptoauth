@@ -7,7 +7,7 @@ pub mod keys;
 pub mod packet;
 pub mod session;
 pub mod authentication;
-pub mod hello;
+pub mod handshake;
 
 pub fn init() {
     rust_sodium::init();

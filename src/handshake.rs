@@ -6,8 +6,8 @@ use rust_sodium::crypto::box_::curve25519xsalsa20poly1305 as crypto_box;
 use cryptography::{hash_password, open_packet_end};
 use keys;
 use authentication;
-use session;
-use packet::{Packet, PacketBuilder, SessionState};
+use session::{Session, SessionState};
+use packet::{Packet, PacketBuilder, PacketType};
 use passwords::PasswordStore;
 
 /// Implements Hello packet creation, as defined by
@@ -34,14 +34,14 @@ use passwords::PasswordStore;
 /// let bytes = hello.raw;
 /// println!("{:?}", bytes);
 /// ```
-pub fn create_hello(session_: &mut session::Session, auth_challenge: authentication::AuthChallenge) -> Packet {
+pub fn create_next_handshake_packet(session: &mut Session, auth_challenge: authentication::AuthChallenge) -> Packet {
     /////////////////////////////////////
     // Paragraph 1
-    let random_nonce = &session_.nonce.0;
+    let random_nonce = crypto_box::gen_nonce();
 
     /////////////////////////////////////
     // Paragraph 2
-    let sender_perm_pub_key = session_.my_perm_pk.bytes();
+    let sender_perm_pub_key = session.my_perm_pk.bytes();
 
     /////////////////////////////////////
     // Paragraph 3
@@ -49,11 +49,11 @@ pub fn create_hello(session_: &mut session::Session, auth_challenge: authenticat
         authentication::AuthChallenge::None => unimplemented!(), // TODO
         authentication::AuthChallenge::Password { ref password } |
         authentication::AuthChallenge::LoginPassword { ref password, login: _ } => {
-            hash_password(password, &session_.my_perm_sk, &session_.their_perm_pk)
+            hash_password(password, &session.my_perm_sk, &session.their_perm_pk)
         }
     };
-    assert_eq!(session_.shared_secret, None);
-    session_.shared_secret = Some(shared_secret);
+    assert_eq!(session.shared_secret, None);
+    session.shared_secret = Some(shared_secret);
 
     /////////////////////////////////////
     // Paragraph 4
@@ -67,8 +67,8 @@ pub fn create_hello(session_: &mut session::Session, auth_challenge: authenticat
     // This may seem counter-intuitive; but it is actually valid because
     // encryption keys and symmetric secrets all are 32-bits long.
     let authenticated_sealed_temp_pk = crypto_box::seal_precomputed(
-            &session_.my_temp_pk.0, // We encrypt the temp pub key
-            &session_.nonce, // with the Nonce
+            &session.my_temp_pk.0, // We encrypt the temp pub key
+            &random_nonce, // with the Nonce
             &crypto_box::PrecomputedKey::from_slice(&shared_secret).unwrap(), // using the shared secret.
             );
     assert_eq!(authenticated_sealed_temp_pk.len(), 16+32);
@@ -92,25 +92,42 @@ pub fn create_hello(session_: &mut session::Session, auth_challenge: authenticat
 
     /////////////////////////////////////
     // Construction of the packet
+    let packet_type = match session.state {
+        SessionState::Uninitialized  => PacketType::Hello,
+        SessionState::ReceivedHello  => PacketType::Key,
+        SessionState::SentHello      => PacketType::RepeatHello,
+        SessionState::SentKey        => PacketType::RepeatKey,
+        SessionState::Established(_) => panic!("Trying to sent handshake packet, but session is established"),
+    };
     let packet = PacketBuilder::new()
-            .session_state(&SessionState::Hello)
-            .auth_challenge(&auth_challenge.to_bytes(session_))
-            .random_nonce(random_nonce)
+            .packet_type(&packet_type)
+            .auth_challenge(&auth_challenge.to_bytes(session))
+            .random_nonce(&random_nonce.0)
             .sender_perm_pub_key(sender_perm_pub_key)
             .msg_auth_code(&msg_auth_code)
             .sender_encrypted_temp_pub_key(&my_encrypted_temp_pk)
             .finalize().unwrap();
+
+    /////////////////////////////////////
+    // Update the session state
+    session.state = match session.state {
+        SessionState::Uninitialized  => SessionState::SentHello,
+        SessionState::ReceivedHello  => SessionState::SentKey,
+        SessionState::SentHello      => SessionState::Established(5),
+        SessionState::SentKey        => SessionState::Established(5),
+        SessionState::Established(_) => panic!("The impossible happened."),
+    };
     packet
 }
 
 /// Read a network packet, assumed to be an Hello or a RepeatHello.
 ///
 /// TODO: improve error return
-pub fn parse_hello<'a, Peer: Clone>(my_perm_pk: keys::PublicKey, my_perm_sk: keys::SecretKey, password_store: &'a PasswordStore<Peer>, packet: &Packet) -> Option<(session::Session, &'a Peer)> {
-    // Check it is an Hello/RepeatHello packet
-    match packet.session_state() {
-        Ok(SessionState::Hello) | Ok(SessionState::RepeatHello) => (),
-        _ => return None,
+pub fn parse_handshake_packet<'a, Peer: Clone>(session: &mut Session, my_perm_pk: keys::PublicKey, my_perm_sk: keys::SecretKey, password_store: &'a PasswordStore<Peer>, packet: &Packet) -> Option<&'a Peer> {
+    // Check the packet type vs session state
+    match packet.packet_type() {
+        Err(_) => panic!("Non-handshake packet passed to parse_handshake_packet"),
+        _ => (),
     };
 
     let mut hash_code = [0u8; 7];
@@ -138,11 +155,16 @@ pub fn parse_hello<'a, Peer: Clone>(my_perm_pk: keys::PublicKey, my_perm_sk: key
         let shared_secret_key = crypto_box::PrecomputedKey::from_slice(&shared_secret).unwrap();
         let packet_end = open_packet_end(packet.sealed_data(), &shared_secret_key, &nonce);
         if let Some((their_temp_pk, data)) = packet_end {
-            let mut session = session::Session::new(my_perm_pk, my_perm_sk, their_perm_pk);
+            session.state = match packet.packet_type() {
+                Ok(PacketType::Hello) | Ok(PacketType::RepeatHello) =>
+                        SessionState::ReceivedHello,
+                Ok(PacketType::Key) | Ok(PacketType::RepeatKey) =>
+                        SessionState::Established(4),
+                Err(_) => panic!("The impossible happened."),
+            };
             session.shared_secret = Some(shared_secret);
             session.their_temp_pk = Some(their_temp_pk);
-            session.nonce = nonce; // TODO: this overwrites the previous nonce. Instead, we could tell Session::new() not to create a nonce.
-            return Some((session, peer))
+            return Some(peer)
         }
     };
     None
