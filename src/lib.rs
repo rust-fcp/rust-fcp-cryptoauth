@@ -1,6 +1,8 @@
 extern crate hex;
 extern crate rust_sodium;
 
+mod cryptography;
+pub mod passwords;
 pub mod keys;
 pub mod packet;
 pub mod session;

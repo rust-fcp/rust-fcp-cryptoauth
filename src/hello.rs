@@ -2,12 +2,13 @@
 
 extern crate rust_sodium;
 use rust_sodium::crypto::box_::curve25519xsalsa20poly1305 as crypto_box;
-use rust_sodium::crypto::scalarmult::curve25519 as scalarmult;
-use rust_sodium::crypto::hash::sha256;
 
+use cryptography::hash_password;
+use keys;
 use authentication;
 use session;
 use packet::{Packet, PacketBuilder, SessionState};
+use passwords::PasswordStore;
 
 /// Implements Hello packet creation, as defined by
 /// https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#hello-repeathello
@@ -44,21 +45,13 @@ pub fn create_hello(session_: &mut session::Session, auth_challenge: authenticat
 
     /////////////////////////////////////
     // Paragraph 3
-    assert_eq!(scalarmult::SCALARBYTES, crypto_box::PUBLICKEYBYTES);
-    assert_eq!(scalarmult::GROUPELEMENTBYTES, crypto_box::SECRETKEYBYTES);
-    let product = scalarmult::scalarmult(
-            &scalarmult::Scalar::from_slice(session_.my_perm_sk.bytes()).unwrap(),
-            &scalarmult::GroupElement::from_slice(session_.their_perm_pk.bytes()).unwrap(),
-            );
-    let mut shared_secret_preimage = product.0.to_vec();
-    match auth_challenge {
+    let shared_secret = match auth_challenge {
         authentication::AuthChallenge::None => unimplemented!(), // TODO
         authentication::AuthChallenge::Password { ref password } |
         authentication::AuthChallenge::LoginPassword { ref password, login: _ } => {
-            shared_secret_preimage.extend(&sha256::hash(&*password).0)
+            hash_password(password, &session_.my_perm_sk, &session_.their_perm_pk)
         }
     };
-    let shared_secret = sha256::hash(&shared_secret_preimage).0;
     assert_eq!(session_.shared_secret, None);
     session_.shared_secret = Some(shared_secret);
 
@@ -108,4 +101,22 @@ pub fn create_hello(session_: &mut session::Session, auth_challenge: authenticat
             .sender_encrypted_temp_pub_key(&my_encrypted_temp_pk)
             .finalize().unwrap();
     packet
+}
+
+/// Read a network packet, assumed to be an Hello or a RepeatHello.
+///
+/// TODO: improve error return
+pub fn read_hello<'a, Peer>(my_perm_pk: keys::PublicKey, my_perm_sk: keys::SecretKey, password_store: &'a PasswordStore<Peer>, buf: Vec<u8>) -> Option<(session::Session, Option<&'a Peer>)> {
+    let packet = Packet { raw: buf };
+
+    // Check it is an Hello/RepeatHello packet
+    match packet.session_state() {
+        Ok(SessionState::Hello) | Ok(SessionState::RepeatHello) => (),
+        _ => return None,
+    };
+
+    let session = session::Session::new(my_perm_pk, my_perm_sk, keys::PublicKey::new_from_bytes(&packet.sender_perm_pub_key()));
+    let peer = password_store.get_peer(&packet.sender_encrypted_temp_pub_key());
+
+    Some((session, peer))
 }
