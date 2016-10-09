@@ -13,7 +13,7 @@
 //! # use fcp_cryptoauth::keys::gen_keypair;
 //! # let (my_pk, my_sk) = gen_keypair();
 //! # let (their_pk, _) = gen_keypair();
-//! # let session = Session::new(my_pk, my_sk, their_pk);
+//! # let session = Session::new(true, my_pk, my_sk, their_pk);
 
 //! let challenge = AuthChallenge::None;
 //! let bytes = challenge.to_bytes(&session);
@@ -29,7 +29,7 @@
 //! # use fcp_cryptoauth::keys::gen_keypair;
 //! # let (my_pk, my_sk) = gen_keypair();
 //! # let (their_pk, _) = gen_keypair();
-//! # let session = Session::new(my_pk, my_sk, their_pk);
+//! # let session = Session::new(true, my_pk, my_sk, their_pk);
 //!
 //! let password = "foo".to_owned().into_bytes();
 //! let challenge = AuthChallenge::Password { password: password };
@@ -47,7 +47,7 @@
 //! # use fcp_cryptoauth::keys::gen_keypair;
 //! # let (my_pk, my_sk) = gen_keypair();
 //! # let (their_pk, _) = gen_keypair();
-//! # let session = Session::new(my_pk, my_sk, their_pk);
+//! # let session = Session::new(true, my_pk, my_sk, their_pk);
 //!
 //! let login = "foo".to_owned().into_bytes();
 //! let password = "bar".to_owned().into_bytes();

@@ -7,7 +7,7 @@ use cryptography::{hash_password, open_packet_end};
 use keys;
 use authentication;
 use session::{Session, SessionState};
-use packet::{Packet, PacketBuilder, PacketType};
+use handshake_packet::{HandshakePacket, HandshakePacketBuilder, HandshakePacketType};
 use passwords::PasswordStore;
 
 /// Implements Hello packet creation, as defined by
@@ -19,22 +19,22 @@ use passwords::PasswordStore;
 /// use fcp_cryptoauth::authentication::AuthChallenge;
 /// use fcp_cryptoauth::session::Session;
 /// use fcp_cryptoauth::keys::{gen_keypair, PublicKey};
-/// use fcp_cryptoauth::hello::create_hello;
+/// use fcp_cryptoauth::handshake::create_next_handshake_packet;
 ///
 /// let (my_pk, my_sk) = gen_keypair();
 /// let their_pk = PublicKey::new_from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k").unwrap();
 /// // Corresponding secret key: 824736a667d85582747fde7184201b17d0e655a7a3d9e0e3e617e7ca33270da8
-/// let mut session = Session::new(my_pk, my_sk, their_pk);
+/// let mut session = Session::new(true, my_pk, my_sk, their_pk);
 ///
 /// let login = "foo".to_owned().into_bytes();
 /// let password = "bar".to_owned().into_bytes();
 /// let challenge = AuthChallenge::LoginPassword { login: login, password: password };
 ///
-/// let hello = create_hello(&mut session, challenge);
+/// let hello = create_next_handshake_packet(&mut session, challenge);
 /// let bytes = hello.raw;
 /// println!("{:?}", bytes);
 /// ```
-pub fn create_next_handshake_packet(session: &mut Session, auth_challenge: authentication::AuthChallenge) -> Packet {
+pub fn create_next_handshake_packet(session: &mut Session, auth_challenge: authentication::AuthChallenge) -> HandshakePacket {
     /////////////////////////////////////
     // Paragraph 1
     let random_nonce = crypto_box::gen_nonce();
@@ -97,13 +97,13 @@ pub fn create_next_handshake_packet(session: &mut Session, auth_challenge: authe
     /////////////////////////////////////
     // Construction of the packet
     let packet_type = match session.state {
-        SessionState::Uninitialized  => PacketType::Hello,
-        SessionState::ReceivedHello  => PacketType::Key,
-        SessionState::SentHello      => PacketType::RepeatHello,
-        SessionState::SentKey        => PacketType::RepeatKey,
+        SessionState::Uninitialized  => HandshakePacketType::Hello,
+        SessionState::ReceivedHello  => HandshakePacketType::Key,
+        SessionState::SentHello      => HandshakePacketType::RepeatHello,
+        SessionState::SentKey        => HandshakePacketType::RepeatKey,
         SessionState::Established(_) => panic!("Trying to sent handshake packet, but session is established"),
     };
-    let packet = PacketBuilder::new()
+    let packet = HandshakePacketBuilder::new()
             .packet_type(&packet_type)
             .auth_challenge(&auth_challenge.to_bytes(session))
             .random_nonce(&random_nonce.0)
@@ -127,7 +127,7 @@ pub fn create_next_handshake_packet(session: &mut Session, auth_challenge: authe
 /// Read a network packet, assumed to be an Hello or a RepeatHello.
 ///
 /// TODO: improve error return
-pub fn parse_handshake_packet<'a, Peer: Clone>(session: &mut Session, password_store: &'a PasswordStore<Peer>, packet: &Packet) -> Option<&'a Peer> {
+pub fn parse_handshake_packet<'a, Peer: Clone>(session: &mut Session, password_store: &'a PasswordStore<Peer>, packet: &HandshakePacket) -> Option<&'a Peer> {
     // Check the packet type vs session state
     match packet.packet_type() {
         Err(_) => panic!("Non-handshake packet passed to parse_handshake_packet"),
@@ -165,9 +165,9 @@ pub fn parse_handshake_packet<'a, Peer: Clone>(session: &mut Session, password_s
         let packet_end = open_packet_end(packet.sealed_data(), &shared_secret_key, &nonce);
         if let Some((their_temp_pk, data)) = packet_end {
             session.state = match packet.packet_type() {
-                Ok(PacketType::Hello) | Ok(PacketType::RepeatHello) =>
+                Ok(HandshakePacketType::Hello) | Ok(HandshakePacketType::RepeatHello) =>
                         SessionState::ReceivedHello,
-                Ok(PacketType::Key) | Ok(PacketType::RepeatKey) =>
+                Ok(HandshakePacketType::Key) | Ok(HandshakePacketType::RepeatKey) =>
                         SessionState::Established(4),
                 Err(_) => panic!("The impossible happened."),
             };
@@ -188,16 +188,17 @@ fn test_parse_handshake_password() {
     let my_pk = PublicKey::new_from_base32(b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k").unwrap();
     let their_pk = PublicKey::new_from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k").unwrap();
     // Corresponding secret key: 824736a667d85582747fde7184201b17d0e655a7a3d9e0e3e617e7ca33270da8
+    let mut session = Session::new(true, my_pk, my_sk, their_pk);
 
     let raw = Vec::from_hex("0000000101ed58a609bc994800000000551ae6bc4940ff2e1f4e9cba228ebe0a18ed77a2ee0a7bb10286fe4b2c3e74fe4f5ceb2f524c81fabe8a94fa41daa65394900f53079d0a1497cdd55def51daf65a45027745706d1673d7a3c8946fa043923e46772284475b26ea71f504055537547c4276d92a013740ab42c612516c69ad8b524d11b55eff7f8976512248806104f0ec4f3e62f8f40926af4cfcad7e79").unwrap();
-    let packet = Packet { raw: raw };
-    let mut store = PasswordStore::new(my_sk.clone());
-    store.add_peer(&"foo".as_bytes().to_vec(), "bar".as_bytes().to_vec(), &their_pk, "my friend".to_owned());
+    let packet = HandshakePacket { raw: raw };
+    let mut store = PasswordStore::new(session.my_perm_sk.clone());
+    store.add_peer(&"foo".as_bytes().to_vec(), "bar".as_bytes().to_vec(), &session.their_perm_pk, "my friend".to_owned());
 
-    assert_eq!(packet.sender_perm_pub_key(), their_pk.crypto_box_key.0);
-    match parse_hello(my_pk, my_sk, &store, &packet) {
+    assert_eq!(packet.sender_perm_pub_key(), session.their_perm_pk.crypto_box_key.0);
+    match parse_handshake_packet(&mut session, &store, &packet) {
         None => assert!(false),
-        Some((_session, peer)) => assert_eq!(peer, &"my friend".to_owned()),
+        Some(peer) => assert_eq!(peer, &"my friend".to_owned()),
     }
 }
 
@@ -210,15 +211,16 @@ fn test_parse_handshake_login() {
     let my_pk = PublicKey::new_from_base32(b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k").unwrap();
     let their_pk = PublicKey::new_from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k").unwrap();
     // Corresponding secret key: 824736a667d85582747fde7184201b17d0e655a7a3d9e0e3e617e7ca33270da8
+    let mut session = Session::new(true, my_pk, my_sk, their_pk);
 
     let raw = Vec::from_hex("000000010226b46b68ffc68f00000000172d7a21645efff9ef874a9094351e870f622537ea208e7f0286fe4b2c3e74fe4f5ceb2f524c81fabe8a94fa41daa65394900f53079d0a14aa670e527964f576521d63c72b1398c19438ea7b661c7dec59e67b86bddf128705108782d53d22742a6b5d2baa6b23af26e154f87678322f0e43eea7a82563e655c36d6126881ec44d0e44ba659c21cafdb3a8017c4ccdc7").unwrap();
-    let packet = Packet { raw: raw };
-    let mut store = PasswordStore::new(my_sk.clone());
-    store.add_peer(&"foo".as_bytes().to_vec(), "bar".as_bytes().to_vec(), &their_pk, "my friend".to_owned());
+    let packet = HandshakePacket { raw: raw };
+    let mut store = PasswordStore::new(session.my_perm_sk.clone());
+    store.add_peer(&"foo".as_bytes().to_vec(), "bar".as_bytes().to_vec(), &session.their_perm_pk, "my friend".to_owned());
 
-    assert_eq!(packet.sender_perm_pub_key(), their_pk.crypto_box_key.0);
-    match parse_hello(my_pk, my_sk, &store, &packet) {
+    assert_eq!(packet.sender_perm_pub_key(), session.their_perm_pk.crypto_box_key.0);
+    match parse_handshake_packet(&mut session, &store, &packet) {
         None => assert!(false),
-        Some((_session, peer)) => assert_eq!(peer, &"my friend".to_owned()),
+        Some(peer) => assert_eq!(peer, &"my friend".to_owned()),
     }
 }

@@ -4,7 +4,7 @@ extern crate rust_sodium;
 mod cryptography;
 pub mod passwords;
 pub mod keys;
-pub mod packet;
+pub mod handshake_packet;
 pub mod session;
 pub mod authentication;
 pub mod handshake;

@@ -1,12 +1,12 @@
-//! Contains the `Packet` structure, and a `PacketBuilder` to
+//! Contains the `HandshakePacket` structure, and a `HandshakePacketBuilder` to
 //! construct it field by field.
 //!
 //! # Example
 //!
 //! ```
-//! use fcp_cryptoauth::packet::{PacketBuilder, Packet, PacketType};
-//! let packet = PacketBuilder::new()
-//!         .packet_type(&PacketType::Key)
+//! use fcp_cryptoauth::handshake_packet::{HandshakePacketBuilder, HandshakePacket, HandshakePacketType};
+//! let packet = HandshakePacketBuilder::new()
+//!         .packet_type(&HandshakePacketType::Key)
 //!         .auth_challenge(&[1u8; 12])
 //!         .random_nonce(&[2u8; 24])
 //!         .sender_perm_pub_key(&[3u8; 32])
@@ -15,7 +15,7 @@
 //!         .encrypted_data(vec![6u8, 7u8, 8u8])
 //!         .finalize()
 //!         .unwrap();
-//! assert_eq!(packet.packet_type(), Ok(PacketType::Key));
+//! assert_eq!(packet.packet_type(), Ok(HandshakePacketType::Key));
 //! assert_eq!(packet.auth_challenge(), [1u8; 12]);
 //! assert_eq!(packet.random_nonce(), [2u8; 24]);
 //! assert_eq!(packet.sender_perm_pub_key(), [3u8; 32]);
@@ -57,14 +57,14 @@ extern crate byteorder;
 use std::fmt;
 
 use hex::ToHex;
-use packet::byteorder::ByteOrder;
+use handshake_packet::byteorder::ByteOrder;
 
 /// Represents the CryptoAuth session state, as defined by
 /// https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#protocol
 #[derive(Eq)]
 #[derive(PartialEq)]
 #[derive(Debug)]
-pub enum PacketType {
+pub enum HandshakePacketType {
     Hello,       // 0u32
     RepeatHello, // 1u32
     Key,         // 2u32
@@ -73,13 +73,13 @@ pub enum PacketType {
 
 /// Represents a raw CryptoAuth packet, as defined by
 /// https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#packet-layout
-pub struct Packet {
+pub struct HandshakePacket {
     pub raw: Vec<u8>,
 }
 
-impl fmt::Debug for Packet {
+impl fmt::Debug for HandshakePacket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Packet {{
+        write!(f, "HandshakePacket {{
         raw:                     0x{},
         state:                   {:?},
         auth_challenge:          0x{},
@@ -101,19 +101,19 @@ impl fmt::Debug for Packet {
     }
 }
 
-impl Packet {
+impl HandshakePacket {
     /// Returns the session state of the packet if it is a known session
     /// state, as defined by
     /// https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#protocol
     ///
     /// Returns Err(value of field) if the session state field is set
     /// to an unknown value.
-    pub fn packet_type(&self) -> Result<PacketType, u32> {
+    pub fn packet_type(&self) -> Result<HandshakePacketType, u32> {
         match byteorder::BigEndian::read_u32(&self.raw[0..4]) {
-            0u32 => Ok(PacketType::Hello),
-            1u32 => Ok(PacketType::RepeatHello),
-            2u32 => Ok(PacketType::Key),
-            3u32 => Ok(PacketType::RepeatKey),
+            0u32 => Ok(HandshakePacketType::Hello),
+            1u32 => Ok(HandshakePacketType::RepeatHello),
+            2u32 => Ok(HandshakePacketType::Key),
+            3u32 => Ok(HandshakePacketType::RepeatKey),
             n => Err(n),
         }
     }
@@ -172,9 +172,9 @@ impl Packet {
     }
 }
 
-/// Used to construct a `Packet` object field-by-field.
+/// Used to construct a `HandshakePacket` object field-by-field.
 #[derive(Debug)]
-pub struct PacketBuilder {
+pub struct HandshakePacketBuilder {
     pub raw: Vec<u8>,
 
     // Store whether these fields have been set.
@@ -188,9 +188,9 @@ pub struct PacketBuilder {
     //encrypted_data: bool,
 }
 
-impl PacketBuilder {
-    pub fn new() -> PacketBuilder {
-        PacketBuilder {
+impl HandshakePacketBuilder {
+    pub fn new() -> HandshakePacketBuilder {
+        HandshakePacketBuilder {
             raw: vec![0; 120],
 
             packet_type: false,
@@ -204,41 +204,41 @@ impl PacketBuilder {
     }
 
     /// Sets the session state of the packet.
-    pub fn packet_type(mut self, packet_type: &PacketType) -> PacketBuilder {
+    pub fn packet_type(mut self, packet_type: &HandshakePacketType) -> HandshakePacketBuilder {
         self.packet_type = true;
         let value = match *packet_type {
-            PacketType::Hello => 0u32,
-            PacketType::RepeatHello => 1u32,
-            PacketType::Key => 2u32,
-            PacketType::RepeatKey => 3u32,
+            HandshakePacketType::Hello => 0u32,
+            HandshakePacketType::RepeatHello => 1u32,
+            HandshakePacketType::Key => 2u32,
+            HandshakePacketType::RepeatKey => 3u32,
         };
         byteorder::BigEndian::write_u32(&mut self.raw[0..4], value);
         self
     }
 
     /// Sets the packet's Authorization Challenge.
-    pub fn auth_challenge(mut self, auth_challenge: &[u8; 12]) -> PacketBuilder {
+    pub fn auth_challenge(mut self, auth_challenge: &[u8; 12]) -> HandshakePacketBuilder {
         self.auth_challenge = true;
         self.raw[4..16].clone_from_slice(auth_challenge);
         self
     }
 
     /// Sets the packet's Nonce.
-    pub fn random_nonce(mut self, random_nonce: &[u8; 24]) -> PacketBuilder {
+    pub fn random_nonce(mut self, random_nonce: &[u8; 24]) -> HandshakePacketBuilder {
         self.random_nonce = true;
         self.raw[16..40].clone_from_slice(random_nonce);
         self
     }
 
     /// Sets the packet's sender permanent public key, provided as a byte array.
-    pub fn sender_perm_pub_key(mut self, sender_perm_pub_key: &[u8; 32]) -> PacketBuilder {
+    pub fn sender_perm_pub_key(mut self, sender_perm_pub_key: &[u8; 32]) -> HandshakePacketBuilder {
         self.sender_perm_pub_key = true;
         self.raw[40..72].clone_from_slice(sender_perm_pub_key);
         self
     }
 
     /// Sets the packet's Message Authentication Code.
-    pub fn msg_auth_code(mut self, msg_auth_code: &[u8; 16]) -> PacketBuilder {
+    pub fn msg_auth_code(mut self, msg_auth_code: &[u8; 16]) -> HandshakePacketBuilder {
         self.msg_auth_code = true;
         self.raw[72..88].clone_from_slice(msg_auth_code);
         self
@@ -246,14 +246,14 @@ impl PacketBuilder {
 
     /// Sets the packet's sender temporary public key, provided encrypted and
     /// as a byte array.
-    pub fn sender_encrypted_temp_pub_key(mut self, sender_encrypted_temp_pub_key: &[u8; 32]) -> PacketBuilder {
+    pub fn sender_encrypted_temp_pub_key(mut self, sender_encrypted_temp_pub_key: &[u8; 32]) -> HandshakePacketBuilder {
         self.sender_encrypted_temp_pub_key = true;
         self.raw[88..120].clone_from_slice(sender_encrypted_temp_pub_key);
         self
     }
 
     /// Sets the packet's encrypted “piggy-backed” data.
-    pub fn encrypted_data(mut self, mut encrypted_data: Vec<u8>) -> PacketBuilder {
+    pub fn encrypted_data(mut self, mut encrypted_data: Vec<u8>) -> HandshakePacketBuilder {
         self.raw.truncate(120);
         self.raw.append(&mut encrypted_data);
         self
@@ -264,13 +264,13 @@ impl PacketBuilder {
     /// sender_perm_pub_key, msg_auth_code, sender_encrypted_temp_pub_key])`,
     /// Each of the items of the array being a boolean set to true if and only
     /// if the corresponding mandatory field was provided.
-    pub fn finalize(self) -> Result<Packet, [bool; 6]> {
+    pub fn finalize(self) -> Result<HandshakePacket, [bool; 6]> {
         let booleans = [self.packet_type, self.auth_challenge, self.random_nonce, self.sender_perm_pub_key, self.msg_auth_code, self.sender_encrypted_temp_pub_key];
         if booleans.contains(&false) {
             Err(booleans)
         }
         else {
-            Ok(Packet { raw: self.raw, })
+            Ok(HandshakePacket { raw: self.raw, })
         }
     }
 }

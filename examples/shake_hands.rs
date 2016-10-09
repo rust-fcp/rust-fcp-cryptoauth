@@ -9,7 +9,7 @@ use fcp_cryptoauth::authentication::AuthChallenge;
 use fcp_cryptoauth::session::{Session, SessionState};
 use fcp_cryptoauth::keys::{PublicKey, SecretKey};
 use fcp_cryptoauth::handshake::{create_next_handshake_packet, parse_handshake_packet};
-use fcp_cryptoauth::packet::{Packet, PacketType};
+use fcp_cryptoauth::handshake_packet::{HandshakePacket, HandshakePacketType};
 use fcp_cryptoauth::passwords::PasswordStore;
 
 pub fn main() {
@@ -32,7 +32,7 @@ pub fn main() {
     let hello = create_next_handshake_packet(&mut session, challenge.clone());
     println!("0x{}", session.shared_secret.unwrap().to_hex());
     println!("{:?}", hello);
-    assert_eq!(hello.packet_type().unwrap(), PacketType::Hello);
+    assert_eq!(hello.packet_type().unwrap(), HandshakePacketType::Hello);
     let bytes = hello.raw;
 
     sock.send_to(&bytes, dest).unwrap();
@@ -41,7 +41,7 @@ pub fn main() {
     let (nb_bytes, addr) = sock.recv_from(&mut buf).unwrap();
     println!("Received {} bytes", nb_bytes);
     buf.truncate(nb_bytes);
-    let packet = Packet { raw: buf };
+    let packet = HandshakePacket { raw: buf };
     println!("{:?}", packet);
 
     assert_eq!(packet.sender_perm_pub_key(), session.their_perm_pk.crypto_box_key.0);
@@ -59,7 +59,7 @@ pub fn main() {
         let key = create_next_handshake_packet(&mut session, challenge);
         println!("0x{}", session.shared_secret.unwrap().to_hex());
         println!("{:?}", key);
-        assert_eq!(key.packet_type().unwrap(), PacketType::Key);
+        assert_eq!(key.packet_type().unwrap(), HandshakePacketType::Key);
         let bytes = key.raw;
 
         sock.send_to(&bytes, dest).unwrap();
@@ -68,7 +68,7 @@ pub fn main() {
         let (nb_bytes, addr) = sock.recv_from(&mut buf).unwrap();
         println!("Received {} bytes", nb_bytes);
         buf.truncate(nb_bytes);
-        let packet = Packet { raw: buf };
+        let packet = HandshakePacket { raw: buf };
         println!("{:?}", packet);
     }
     
