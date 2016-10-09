@@ -163,6 +163,13 @@ impl Packet {
         //   the Package object so a copy would be useless.
         &self.raw[120..]
     }
+
+    /// Returns msg_auth_code, sender_encrypted_temp_pub_key, and encrypted_data
+    /// concatenated in that order.
+    /// The purpose is to use it as input to the 'open' cryptographic primitive.
+    pub fn sealed_data(&self) -> &[u8] {
+        &self.raw[72..]
+    }
 }
 
 /// Used to construct a `Packet` object field-by-field.

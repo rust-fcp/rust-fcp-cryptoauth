@@ -69,6 +69,7 @@ fn test_decode_base32() {
 /// let sk = SecretKey::new_from_hex(b"ac3e53b518e68449692b0b2f2926ef2fdc1eac5b9dbd10a48114263b8c8ed12e");
 /// assert!(sk.is_some());
 /// ```
+#[derive(Clone)]
 pub struct PublicKey {
     pub crypto_box_key: crypto_box::PublicKey,
 }
@@ -101,6 +102,7 @@ impl PublicKey {
     }
 }
 
+#[derive(Clone)]
 pub struct SecretKey {
     pub crypto_box_key: crypto_box::SecretKey,
 }

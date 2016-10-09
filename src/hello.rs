@@ -3,7 +3,7 @@
 extern crate rust_sodium;
 use rust_sodium::crypto::box_::curve25519xsalsa20poly1305 as crypto_box;
 
-use cryptography::hash_password;
+use cryptography::{hash_password, open_packet_end};
 use keys;
 use authentication;
 use session;
@@ -106,17 +106,44 @@ pub fn create_hello(session_: &mut session::Session, auth_challenge: authenticat
 /// Read a network packet, assumed to be an Hello or a RepeatHello.
 ///
 /// TODO: improve error return
-pub fn read_hello<'a, Peer>(my_perm_pk: keys::PublicKey, my_perm_sk: keys::SecretKey, password_store: &'a PasswordStore<Peer>, buf: Vec<u8>) -> Option<(session::Session, Option<&'a Peer>)> {
-    let packet = Packet { raw: buf };
-
+pub fn parse_hello<'a, Peer: Clone>(my_perm_pk: keys::PublicKey, my_perm_sk: keys::SecretKey, password_store: &'a PasswordStore<Peer>, packet: &Packet) -> Option<(session::Session, &'a Peer)> {
     // Check it is an Hello/RepeatHello packet
     match packet.session_state() {
         Ok(SessionState::Hello) | Ok(SessionState::RepeatHello) => (),
         _ => return None,
     };
 
-    let session = session::Session::new(my_perm_pk, my_perm_sk, keys::PublicKey::new_from_bytes(&packet.sender_perm_pub_key()));
-    let peer = password_store.get_peer(&packet.sender_encrypted_temp_pub_key());
+    let mut hash_code = [0u8; 7];
+    hash_code.copy_from_slice(&packet.auth_challenge()[1..8]);
+    let candidates_opt = match packet.auth_challenge()[0] {
+        0x00 => return None, // No auth, not supported.
+        0x01 => { // Password only
+            password_store.get_candidate_peers_from_password_doublehash_slice(&hash_code)
+        }
+        0x02 => { // Login + Password
+            password_store.get_candidate_peers_from_login_hash_slice(&hash_code)
+        }
+        _ => return None, // Unknown auth type
+    };
+    let candidates = match candidates_opt {
+        Some(candidates) => candidates,
+        None => return None,
+    };
+            
 
-    Some((session, peer))
+    let their_perm_pk = keys::PublicKey { crypto_box_key: crypto_box::PublicKey::from_slice(&packet.sender_perm_pub_key()).unwrap() };
+    for &(ref password, ref peer) in candidates {
+        let nonce = crypto_box::Nonce::from_slice(&packet.random_nonce()).unwrap();
+        let shared_secret = hash_password(password, &my_perm_sk, &their_perm_pk);
+        let shared_secret_key = crypto_box::PrecomputedKey::from_slice(&shared_secret).unwrap();
+        let packet_end = open_packet_end(packet.sealed_data(), &shared_secret_key, &nonce);
+        if let Some((their_temp_pk, data)) = packet_end {
+            let mut session = session::Session::new(my_perm_pk, my_perm_sk, their_perm_pk);
+            session.shared_secret = Some(shared_secret);
+            session.their_temp_pk = Some(their_temp_pk);
+            session.nonce = nonce; // TODO: this overwrites the previous nonce. Instead, we could tell Session::new() not to create a nonce.
+            return Some((session, peer))
+        }
+    };
+    None
 }
