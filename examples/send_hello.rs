@@ -9,6 +9,7 @@ use fcp_cryptoauth::authentication::AuthChallenge;
 use fcp_cryptoauth::session::Session;
 use fcp_cryptoauth::keys::{PublicKey, SecretKey};
 use fcp_cryptoauth::hello::create_hello;
+use fcp_cryptoauth::packet::Packet;
 
 pub fn main() {
     let my_sk = SecretKey::new_from_hex(b"ac3e53b518e68449692b0b2f2926ef2fdc1eac5b9dbd10a48114263b8c8ed12e").unwrap();
@@ -28,4 +29,10 @@ pub fn main() {
     let sock = UdpSocket::bind("[::1]:12345").unwrap();
     let dest = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 54321);
     sock.send_to(&bytes, dest).unwrap();
+
+    let mut buf = vec![0u8; 1024];
+    let (nb_bytes, addr) = sock.recv_from(&mut buf).unwrap();
+    println!("Received {} bytes", nb_bytes);
+    buf.truncate(nb_bytes);
+    println!("{:?}", Packet { raw: buf });
 }
