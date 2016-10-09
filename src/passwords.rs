@@ -34,7 +34,7 @@ impl<Peer: Clone> PasswordStore<Peer> {
     }
 
     fn add_login_peer(&mut self, login: &Vec<u8>, password: Vec<u8>, their_perm_pk: &PublicKey, peer: Peer) {
-        let hashed_login = sha256::hash(&sha256::hash(login).0);
+        let hashed_login = sha256::hash(login);
         let mut bucket = {
             let hashed_login_slice = &hashed_login[1..8];
             if let None = self.login_peers.get_mut(hashed_login_slice) {
