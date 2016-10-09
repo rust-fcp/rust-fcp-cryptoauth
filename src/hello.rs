@@ -147,3 +147,47 @@ pub fn parse_hello<'a, Peer: Clone>(my_perm_pk: keys::PublicKey, my_perm_sk: key
     };
     None
 }
+
+#[test]
+fn test_parse_hello_password() {
+    use hex::FromHex;
+    use keys::{PublicKey, SecretKey};
+
+    let my_sk = SecretKey::new_from_hex(b"ac3e53b518e68449692b0b2f2926ef2fdc1eac5b9dbd10a48114263b8c8ed12e").unwrap();
+    let my_pk = PublicKey::new_from_base32(b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k").unwrap();
+    let their_pk = PublicKey::new_from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k").unwrap();
+    // Corresponding secret key: 824736a667d85582747fde7184201b17d0e655a7a3d9e0e3e617e7ca33270da8
+
+    let raw = Vec::from_hex("0000000101ed58a609bc994800000000551ae6bc4940ff2e1f4e9cba228ebe0a18ed77a2ee0a7bb10286fe4b2c3e74fe4f5ceb2f524c81fabe8a94fa41daa65394900f53079d0a1497cdd55def51daf65a45027745706d1673d7a3c8946fa043923e46772284475b26ea71f504055537547c4276d92a013740ab42c612516c69ad8b524d11b55eff7f8976512248806104f0ec4f3e62f8f40926af4cfcad7e79").unwrap();
+    let packet = Packet { raw: raw };
+    let mut store = PasswordStore::new(my_sk.clone());
+    store.add_peer(&"foo".as_bytes().to_vec(), "bar".as_bytes().to_vec(), &their_pk, "my friend".to_owned());
+
+    assert_eq!(packet.sender_perm_pub_key(), their_pk.crypto_box_key.0);
+    match parse_hello(my_pk, my_sk, &store, &packet) {
+        None => assert!(false),
+        Some((_session, peer)) => assert_eq!(peer, &"my friend".to_owned()),
+    }
+}
+
+#[test]
+fn test_parse_hello_login() {
+    use hex::FromHex;
+    use keys::{PublicKey, SecretKey};
+
+    let my_sk = SecretKey::new_from_hex(b"ac3e53b518e68449692b0b2f2926ef2fdc1eac5b9dbd10a48114263b8c8ed12e").unwrap();
+    let my_pk = PublicKey::new_from_base32(b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k").unwrap();
+    let their_pk = PublicKey::new_from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k").unwrap();
+    // Corresponding secret key: 824736a667d85582747fde7184201b17d0e655a7a3d9e0e3e617e7ca33270da8
+
+    let raw = Vec::from_hex("000000010226b46b68ffc68f00000000172d7a21645efff9ef874a9094351e870f622537ea208e7f0286fe4b2c3e74fe4f5ceb2f524c81fabe8a94fa41daa65394900f53079d0a14aa670e527964f576521d63c72b1398c19438ea7b661c7dec59e67b86bddf128705108782d53d22742a6b5d2baa6b23af26e154f87678322f0e43eea7a82563e655c36d6126881ec44d0e44ba659c21cafdb3a8017c4ccdc7").unwrap();
+    let packet = Packet { raw: raw };
+    let mut store = PasswordStore::new(my_sk.clone());
+    store.add_peer(&"foo".as_bytes().to_vec(), "bar".as_bytes().to_vec(), &their_pk, "my friend".to_owned());
+
+    assert_eq!(packet.sender_perm_pub_key(), their_pk.crypto_box_key.0);
+    match parse_hello(my_pk, my_sk, &store, &packet) {
+        None => assert!(false),
+        Some((_session, peer)) => assert_eq!(peer, &"my friend".to_owned()),
+    }
+}
