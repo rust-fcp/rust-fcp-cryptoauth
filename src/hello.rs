@@ -68,13 +68,22 @@ pub fn create_hello(session_: &mut session::Session, auth_challenge: authenticat
 
     /////////////////////////////////////
     // Paragraph 5
-    // Note: the implementations details given in paragraph 6 only apply to
-    // the C API, not to the Rust API.
+    // This part is a bit tricky. Hold on tight.
 
-    // The seal function will return a buffer containing
-    // 16 bytes of MAC (msg auth code), followed by 32 bytes of encrypted data
-    let authenticated_sealed_temp_pk = crypto_box::seal(&shared_secret, &session_.nonce, &session_.my_temp_pk, &session_.my_temp_sk);
+    // Here, we will encrypt the temp pub *key* using the *shared secret*.
+    // This may seem counter-intuitive; but it is actually valid because
+    // encryption keys and symmetric secrets all are 32-bits long.
+    let authenticated_sealed_temp_pk = crypto_box::seal_precomputed(
+            &session_.my_temp_pk.0, // We encrypt the temp pub key
+            &session_.nonce, // with the Nonce
+            &crypto_box::PrecomputedKey::from_slice(&shared_secret).unwrap(), // using the shared secret.
+            );
     assert_eq!(authenticated_sealed_temp_pk.len(), 16+32);
+
+    // The seal_precomputed function will return a buffer containing
+    // 16 bytes of MAC (msg auth code), followed by 32 bytes of encrypted data
+    // (The implementations details given in paragraph 6 only apply to
+    // the C API, not to the Rust API.)
 
     // And we can extract these
     let mut msg_auth_code = [0u8; 16];
