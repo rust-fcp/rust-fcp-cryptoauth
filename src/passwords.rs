@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
-use rust_sodium::crypto::hash::sha256;
-
-use keys::{SecretKey, PublicKey};
+use cryptography::crypto_box::{PublicKey, SecretKey};
+use cryptography::sha256;
 use cryptography::{hash_password, PASSWORD_DIGEST_BYTES};
 
 pub struct PasswordStore<Peer: Clone> {

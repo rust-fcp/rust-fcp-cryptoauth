@@ -1,13 +1,10 @@
 //! Contains the `Session` structure, which stores the state of a
 //! CryptoAuth session.
 
-extern crate rust_sodium;
-
 use std::fmt;
 
-use rust_sodium::crypto::box_::curve25519xsalsa20poly1305 as crypto_box;
-
-use keys::{SecretKey, PublicKey};
+use cryptography::crypto_box;
+use cryptography::crypto_box::{PublicKey, SecretKey, Nonce};
 
 #[derive(Debug)]
 #[derive(Eq)]
@@ -34,6 +31,8 @@ pub struct Session {
 
     pub shared_secret: Option<[u8; 32]>,
     pub their_temp_pk: Option<crypto_box::PublicKey>,
+
+    pub handshake_nonce: Option<Nonce>,
 }
 
 impl fmt::Debug for Session {
@@ -62,6 +61,8 @@ impl Session {
 
             shared_secret: None,
             their_temp_pk: None,
+
+            handshake_nonce: None,
         }
     }
 }

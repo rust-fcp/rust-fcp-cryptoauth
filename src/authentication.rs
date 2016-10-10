@@ -10,7 +10,7 @@
 //! ```
 //! use fcp_cryptoauth::authentication::*;
 //! # use fcp_cryptoauth::session::Session;
-//! # use fcp_cryptoauth::keys::gen_keypair;
+//! # use fcp_cryptoauth::cryptography::crypto_box::gen_keypair;
 //! # let (my_pk, my_sk) = gen_keypair();
 //! # let (their_pk, _) = gen_keypair();
 //! # let session = Session::new(true, my_pk, my_sk, their_pk);
@@ -26,7 +26,7 @@
 //! ```
 //! use fcp_cryptoauth::authentication::*;
 //! # use fcp_cryptoauth::session::Session;
-//! # use fcp_cryptoauth::keys::gen_keypair;
+//! # use fcp_cryptoauth::cryptography::crypto_box::gen_keypair;
 //! # let (my_pk, my_sk) = gen_keypair();
 //! # let (their_pk, _) = gen_keypair();
 //! # let session = Session::new(true, my_pk, my_sk, their_pk);
@@ -44,7 +44,7 @@
 //! ```
 //! use fcp_cryptoauth::authentication::*;
 //! # use fcp_cryptoauth::session::Session;
-//! # use fcp_cryptoauth::keys::gen_keypair;
+//! # use fcp_cryptoauth::cryptography::crypto_box::gen_keypair;
 //! # let (my_pk, my_sk) = gen_keypair();
 //! # let (their_pk, _) = gen_keypair();
 //! # let session = Session::new(true, my_pk, my_sk, their_pk);
@@ -60,9 +60,9 @@
 
 extern crate rust_sodium;
 use rust_sodium::randombytes::randombytes;
-use rust_sodium::crypto::hash::sha256;
 
 use session::Session;
+use cryptography::sha256;
 
 /// Represents an authorization method and its data, as defined by
 /// https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#authorization-challenges

@@ -1,9 +1,5 @@
 //! Creates and reads CryptoAuth Hello packets
-
-extern crate rust_sodium;
-use rust_sodium::crypto::box_::curve25519xsalsa20poly1305 as crypto_box;
-
-use cryptography::{hash_password, open_packet_end};
+use cryptography::{crypto_box, hash_password, open_packet_end};
 use keys;
 use authentication;
 use session::{Session, SessionState};
@@ -16,13 +12,14 @@ use passwords::PasswordStore;
 /// # Examples
 ///
 /// ```
+/// use fcp_cryptoauth::cryptography::crypto_box::{gen_keypair, PublicKey};
 /// use fcp_cryptoauth::authentication::AuthChallenge;
 /// use fcp_cryptoauth::session::Session;
-/// use fcp_cryptoauth::keys::{gen_keypair, PublicKey};
+/// use fcp_cryptoauth::keys::FromBase32;
 /// use fcp_cryptoauth::handshake::create_next_handshake_packet;
 ///
 /// let (my_pk, my_sk) = gen_keypair();
-/// let their_pk = PublicKey::new_from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k").unwrap();
+/// let their_pk = PublicKey::from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k").unwrap();
 /// // Corresponding secret key: 824736a667d85582747fde7184201b17d0e655a7a3d9e0e3e617e7ca33270da8
 /// let mut session = Session::new(true, my_pk, my_sk, their_pk);
 ///
@@ -37,11 +34,19 @@ use passwords::PasswordStore;
 pub fn create_next_handshake_packet(session: &mut Session, auth_challenge: authentication::AuthChallenge) -> HandshakePacket {
     /////////////////////////////////////
     // Paragraph 1
-    let random_nonce = crypto_box::gen_nonce();
+    let random_nonce = match session.handshake_nonce {
+        Some(nonce) => nonce,
+        None => {
+            // TODO: reset the nonce if the connection is reset.
+            let nonce = crypto_box::gen_nonce();
+            session.handshake_nonce = Some(nonce);
+            nonce
+        }
+    };
 
     /////////////////////////////////////
     // Paragraph 2
-    let sender_perm_pub_key = session.my_perm_pk.bytes();
+    let sender_perm_pub_key = session.my_perm_pk.0;
 
     /////////////////////////////////////
     // Paragraph 3
@@ -56,6 +61,8 @@ pub fn create_next_handshake_packet(session: &mut Session, auth_challenge: authe
         assert_eq!(known_secret, shared_secret);
     }
     else {
+        use hex::ToHex;
+        println!("Got secret: {}", shared_secret.to_vec().to_hex());
         session.shared_secret = Some(shared_secret);
     }
 
@@ -103,11 +110,13 @@ pub fn create_next_handshake_packet(session: &mut Session, auth_challenge: authe
         SessionState::SentKey        => HandshakePacketType::RepeatKey,
         SessionState::Established(_) => panic!("Trying to sent handshake packet, but session is established"),
     };
+    use hex::ToHex;
+    println!("Creating {:?} with secret {} and nonce {}", packet_type, shared_secret.to_vec().to_hex(), random_nonce.0.to_vec().to_hex());
     let packet = HandshakePacketBuilder::new()
             .packet_type(&packet_type)
             .auth_challenge(&auth_challenge.to_bytes(session))
             .random_nonce(&random_nonce.0)
-            .sender_perm_pub_key(sender_perm_pub_key)
+            .sender_perm_pub_key(&sender_perm_pub_key)
             .msg_auth_code(&msg_auth_code)
             .sender_encrypted_temp_pub_key(&my_encrypted_temp_pk)
             .finalize().unwrap();
@@ -152,7 +161,7 @@ pub fn parse_handshake_packet<'a, Peer: Clone>(session: &mut Session, password_s
     };
             
 
-    let their_perm_pk = keys::PublicKey { crypto_box_key: crypto_box::PublicKey::from_slice(&packet.sender_perm_pub_key()).unwrap() };
+    let their_perm_pk = crypto_box::PublicKey::from_slice(&packet.sender_perm_pub_key()).unwrap();
     if session.their_perm_pk != their_perm_pk {
         // Wrong key. Drop the packet.
         return None;
@@ -160,7 +169,10 @@ pub fn parse_handshake_packet<'a, Peer: Clone>(session: &mut Session, password_s
 
     for &(ref password, ref peer) in candidates {
         let nonce = crypto_box::Nonce::from_slice(&packet.random_nonce()).unwrap();
-        let shared_secret = hash_password(password, &session.my_perm_sk, &their_perm_pk);
+        let shared_secret = match session.shared_secret {
+            None => hash_password(password, &session.my_perm_sk, &their_perm_pk),
+            Some(ss) => ss,
+        };
         let shared_secret_key = crypto_box::PrecomputedKey::from_slice(&shared_secret).unwrap();
         let packet_end = open_packet_end(packet.sealed_data(), &shared_secret_key, &nonce);
         if let Some((their_temp_pk, data)) = packet_end {
@@ -173,6 +185,7 @@ pub fn parse_handshake_packet<'a, Peer: Clone>(session: &mut Session, password_s
             };
             session.shared_secret = Some(shared_secret);
             session.their_temp_pk = Some(their_temp_pk);
+            session.handshake_nonce = Some(nonce);
             return Some(peer)
         }
     };
@@ -181,12 +194,12 @@ pub fn parse_handshake_packet<'a, Peer: Clone>(session: &mut Session, password_s
 
 #[test]
 fn test_parse_handshake_password() {
-    use hex::FromHex;
-    use keys::{PublicKey, SecretKey};
+    use hex::FromHex as VecFromHex;
+    use keys::{FromBase32, FromHex};
 
-    let my_sk = SecretKey::new_from_hex(b"ac3e53b518e68449692b0b2f2926ef2fdc1eac5b9dbd10a48114263b8c8ed12e").unwrap();
-    let my_pk = PublicKey::new_from_base32(b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k").unwrap();
-    let their_pk = PublicKey::new_from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k").unwrap();
+    let my_sk = crypto_box::SecretKey::from_hex(b"ac3e53b518e68449692b0b2f2926ef2fdc1eac5b9dbd10a48114263b8c8ed12e").unwrap();
+    let my_pk = crypto_box::PublicKey::from_base32(b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k").unwrap();
+    let their_pk = crypto_box::PublicKey::from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k").unwrap();
     // Corresponding secret key: 824736a667d85582747fde7184201b17d0e655a7a3d9e0e3e617e7ca33270da8
     let mut session = Session::new(true, my_pk, my_sk, their_pk);
 
@@ -195,7 +208,7 @@ fn test_parse_handshake_password() {
     let mut store = PasswordStore::new(session.my_perm_sk.clone());
     store.add_peer(&"foo".as_bytes().to_vec(), "bar".as_bytes().to_vec(), &session.their_perm_pk, "my friend".to_owned());
 
-    assert_eq!(packet.sender_perm_pub_key(), session.their_perm_pk.crypto_box_key.0);
+    assert_eq!(packet.sender_perm_pub_key(), session.their_perm_pk.0);
     match parse_handshake_packet(&mut session, &store, &packet) {
         None => assert!(false),
         Some(peer) => assert_eq!(peer, &"my friend".to_owned()),
@@ -204,12 +217,12 @@ fn test_parse_handshake_password() {
 
 #[test]
 fn test_parse_handshake_login() {
-    use hex::FromHex;
-    use keys::{PublicKey, SecretKey};
+    use hex::FromHex as VecFromHex;
+    use keys::{FromBase32, FromHex};
 
-    let my_sk = SecretKey::new_from_hex(b"ac3e53b518e68449692b0b2f2926ef2fdc1eac5b9dbd10a48114263b8c8ed12e").unwrap();
-    let my_pk = PublicKey::new_from_base32(b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k").unwrap();
-    let their_pk = PublicKey::new_from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k").unwrap();
+    let my_sk = crypto_box::SecretKey::from_hex(b"ac3e53b518e68449692b0b2f2926ef2fdc1eac5b9dbd10a48114263b8c8ed12e").unwrap();
+    let my_pk = crypto_box::PublicKey::from_base32(b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k").unwrap();
+    let their_pk = crypto_box::PublicKey::from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k").unwrap();
     // Corresponding secret key: 824736a667d85582747fde7184201b17d0e655a7a3d9e0e3e617e7ca33270da8
     let mut session = Session::new(true, my_pk, my_sk, their_pk);
 
@@ -218,7 +231,7 @@ fn test_parse_handshake_login() {
     let mut store = PasswordStore::new(session.my_perm_sk.clone());
     store.add_peer(&"foo".as_bytes().to_vec(), "bar".as_bytes().to_vec(), &session.their_perm_pk, "my friend".to_owned());
 
-    assert_eq!(packet.sender_perm_pub_key(), session.their_perm_pk.crypto_box_key.0);
+    assert_eq!(packet.sender_perm_pub_key(), session.their_perm_pk.0);
     match parse_handshake_packet(&mut session, &store, &packet) {
         None => assert!(false),
         Some(peer) => assert_eq!(peer, &"my friend".to_owned()),
