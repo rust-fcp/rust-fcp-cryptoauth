@@ -4,18 +4,23 @@
 use std::fmt;
 
 use cryptography::crypto_box;
-use cryptography::crypto_box::{PublicKey, SecretKey, Nonce};
+use cryptography::crypto_box::{PublicKey, SecretKey, PrecomputedKey, Nonce};
+
+use authentication::AuthChallenge;
 
 #[derive(Debug)]
+#[derive(Clone)]
 #[derive(Eq)]
 #[derive(PartialEq)]
 pub enum SessionState {
-    Uninitialized,
-    ReceivedHello,
-    SentHello, // Implies not(ReceivedHello)
-    SentKey, // Implies ReceivedHello
-    Established(u32), // Implies SentKey or SentHello. The argument is a nonce > 4.
+    UninitializedUnknownPeer,
+    UninitializedKnownPeer,
+    SentHello { handshake_nonce: Nonce, shared_secret_key: PrecomputedKey },
+    ReceivedHello { their_temp_pk: PublicKey, handshake_nonce: Nonce, shared_secret_key: PrecomputedKey },
+    SentKey { their_temp_pk: PublicKey, handshake_nonce: Nonce, shared_secret_key: PrecomputedKey },
+    Established { their_temp_pk: PublicKey, nonce: Nonce, shared_secret_key: PrecomputedKey },
 }
+
 
 /// Stores the state of a CryptoAuth session (nonce, permanent keys,
 /// temporary keys).
@@ -28,11 +33,6 @@ pub struct Session {
 
     pub my_temp_pk: crypto_box::PublicKey,
     pub my_temp_sk: crypto_box::SecretKey,
-
-    pub shared_secret: Option<[u8; 32]>,
-    pub their_temp_pk: Option<crypto_box::PublicKey>,
-
-    pub handshake_nonce: Option<Nonce>,
 }
 
 impl fmt::Debug for Session {
@@ -45,12 +45,12 @@ impl Session {
     /// Creates a new session using permanent keys.
     /// 'initiator' determines whether we are the one to send the Hello packet
     /// (and receive the Key packet)
-    pub fn new(initiator: bool, my_pk: PublicKey, my_sk: SecretKey, their_pk: PublicKey) -> Session {
+    pub fn new(my_pk: PublicKey, my_sk: SecretKey, their_pk: PublicKey, initial_state: SessionState) -> Session {
         // Temporary keys used only for this session.
         let (my_temp_pk, my_temp_sk) = crypto_box::gen_keypair();
 
         Session {
-            state: if initiator { SessionState::Uninitialized } else { SessionState::ReceivedHello },
+            state: initial_state,
 
             my_perm_pk: my_pk,
             my_perm_sk: my_sk,
@@ -58,11 +58,13 @@ impl Session {
 
             my_temp_pk: my_temp_pk,
             my_temp_sk: my_temp_sk,
-
-            shared_secret: None,
-            their_temp_pk: None,
-
-            handshake_nonce: None,
         }
+    }
+
+    /// Resets the temporary keys.
+    pub fn reset(&mut self) {
+        let (my_temp_pk, my_temp_sk) = crypto_box::gen_keypair();
+        self.my_temp_pk = my_temp_pk;
+        self.my_temp_sk = my_temp_sk;
     }
 }

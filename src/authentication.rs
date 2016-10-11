@@ -9,11 +9,11 @@
 //!
 //! ```
 //! use fcp_cryptoauth::authentication::*;
-//! # use fcp_cryptoauth::session::Session;
+//! # use fcp_cryptoauth::session::{Session, SessionState};
 //! # use fcp_cryptoauth::cryptography::crypto_box::gen_keypair;
 //! # let (my_pk, my_sk) = gen_keypair();
 //! # let (their_pk, _) = gen_keypair();
-//! # let session = Session::new(true, my_pk, my_sk, their_pk);
+//! # let session = Session::new(my_pk, my_sk, their_pk, SessionState::UninitializedKnownPeer);
 
 //! let challenge = AuthChallenge::None;
 //! let bytes = challenge.to_bytes(&session);
@@ -25,11 +25,11 @@
 //!
 //! ```
 //! use fcp_cryptoauth::authentication::*;
-//! # use fcp_cryptoauth::session::Session;
+//! # use fcp_cryptoauth::session::{Session, SessionState};
 //! # use fcp_cryptoauth::cryptography::crypto_box::gen_keypair;
 //! # let (my_pk, my_sk) = gen_keypair();
 //! # let (their_pk, _) = gen_keypair();
-//! # let session = Session::new(true, my_pk, my_sk, their_pk);
+//! # let session = Session::new(my_pk, my_sk, their_pk, SessionState::UninitializedKnownPeer);
 //!
 //! let password = "foo".to_owned().into_bytes();
 //! let challenge = AuthChallenge::Password { password: password };
@@ -43,11 +43,11 @@
 //!
 //! ```
 //! use fcp_cryptoauth::authentication::*;
-//! # use fcp_cryptoauth::session::Session;
+//! # use fcp_cryptoauth::session::{Session, SessionState};
 //! # use fcp_cryptoauth::cryptography::crypto_box::gen_keypair;
 //! # let (my_pk, my_sk) = gen_keypair();
 //! # let (their_pk, _) = gen_keypair();
-//! # let session = Session::new(true, my_pk, my_sk, their_pk);
+//! # let session = Session::new(my_pk, my_sk, their_pk, SessionState::UninitializedKnownPeer);
 //!
 //! let login = "foo".to_owned().into_bytes();
 //! let password = "bar".to_owned().into_bytes();
@@ -62,11 +62,16 @@ extern crate rust_sodium;
 use rust_sodium::randombytes::randombytes;
 
 use session::Session;
+use cryptography::crypto_box::PrecomputedKey;
 use cryptography::sha256;
+use cryptography::{shared_secret_from_password, PASSWORD_DIGEST_BYTES};
 
 /// Represents an authorization method and its data, as defined by
 /// https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#authorization-challenges
 #[derive(Clone)]
+#[derive(Debug)]
+#[derive(Eq)]
+#[derive(PartialEq)]
 pub enum AuthChallenge {
     None,
     Password { password: Vec<u8> },
@@ -111,4 +116,27 @@ impl AuthChallenge {
             },
         }
     }
+
+    pub fn make_shared_secret(&self, session: &Session) -> [u8; PASSWORD_DIGEST_BYTES] {
+        match *self {
+            AuthChallenge::None => unimplemented!(), // TODO
+            AuthChallenge::Password { ref password } |
+            AuthChallenge::LoginPassword { ref password, login: _ } => {
+                shared_secret_from_password(password, &session.my_perm_sk, &session.their_perm_pk)
+            }
+        }
+    }
+
+    pub fn make_shared_secret_key(&self, session: &Session) -> PrecomputedKey {
+        PrecomputedKey::from_slice(&self.make_shared_secret(session)).unwrap()
+    }
+}
+
+#[derive(Debug)]
+#[derive(Clone)]
+pub enum AuthFailure {
+    UnknownAuthMethod(u8), // An incoming peer tried an auth method that is not None/Password/LoginPassword
+    AuthNone, // An incoming peer tried to connect with None auth.
+    InvalidCredentials, // An incoming peer tried to connect with credentials unknown to us.
+    WrongPublicKey, // A peer used a public key different than expected.
 }

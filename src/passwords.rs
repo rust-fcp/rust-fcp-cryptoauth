@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use cryptography::crypto_box::{PublicKey, SecretKey};
 use cryptography::sha256;
-use cryptography::{hash_password, PASSWORD_DIGEST_BYTES};
 
 pub struct PasswordStore<Peer: Clone> {
     my_perm_sk: SecretKey,
