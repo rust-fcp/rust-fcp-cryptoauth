@@ -6,8 +6,6 @@ use std::fmt;
 use cryptography::crypto_box;
 use cryptography::crypto_box::{PublicKey, SecretKey, PrecomputedKey, Nonce};
 
-use authentication::AuthChallenge;
-
 #[derive(Debug)]
 #[derive(Clone)]
 #[derive(Eq)]
@@ -18,7 +16,7 @@ pub enum SessionState {
     SentHello { handshake_nonce: Nonce, shared_secret_key: PrecomputedKey },
     ReceivedHello { their_temp_pk: PublicKey, handshake_nonce: Nonce, shared_secret_key: PrecomputedKey },
     SentKey { their_temp_pk: PublicKey, handshake_nonce: Nonce, shared_secret_key: PrecomputedKey },
-    Established { their_temp_pk: PublicKey, nonce: Nonce, shared_secret_key: PrecomputedKey },
+    Established { their_temp_pk: PublicKey, shared_secret_key: PrecomputedKey },
 }
 
 
@@ -33,6 +31,10 @@ pub struct Session {
 
     pub my_temp_pk: crypto_box::PublicKey,
     pub my_temp_sk: crypto_box::SecretKey,
+
+    pub my_last_nonce: u64, // Actually, 24 bytes. But arithmetic operations on u64 are easier.
+    pub their_nonce_offset: u64, // Same comment
+    pub their_nonce_bitfield: u64,
 }
 
 impl fmt::Debug for Session {
@@ -58,6 +60,10 @@ impl Session {
 
             my_temp_pk: my_temp_pk,
             my_temp_sk: my_temp_sk,
+
+            my_last_nonce: 4u64,
+            their_nonce_offset: 4u64,
+            their_nonce_bitfield: 0u64,
         }
     }
 

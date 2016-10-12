@@ -2,6 +2,8 @@ pub use rust_sodium::crypto::box_::curve25519xsalsa20poly1305 as crypto_box;
 pub use rust_sodium::crypto::scalarmult::curve25519 as scalarmult;
 pub use rust_sodium::crypto::hash::sha256;
 
+use auth_failure::AuthFailure;
+
 /// Number of bytes in a password digest.
 pub const PASSWORD_DIGEST_BYTES: usize = sha256::DIGESTBYTES;
 
@@ -23,19 +25,23 @@ pub fn shared_secret_from_keys(my_temp_sk: &crypto_box::SecretKey, their_perm_pk
     crypto_box::precompute(their_perm_pk, my_temp_sk)
 }
 
-/// Unseals the concatenation of fields msg_auth_code, sender_encrypted_temp_pk, and
+/// unseals the concatenation of fields msg_auth_code, sender_encrypted_temp_pk, and
 /// encrypted_data of a packet.
 /// If authentication was successful, returns the sender's temp_pk and the
 /// data, unencrypted.
-pub fn open_packet_end(packet_end: &[u8], shared_secret: &crypto_box::PrecomputedKey, nonce: &crypto_box::Nonce) -> Option<(crypto_box::PublicKey, Vec<u8>)> {
+pub fn open_packet_end(packet_end: &[u8], shared_secret: &crypto_box::PrecomputedKey, nonce: &crypto_box::Nonce) -> Result<(crypto_box::PublicKey, Vec<u8>), AuthFailure> {
+    if packet_end.len() < crypto_box::MACBYTES {
+        return Err(AuthFailure::PacketTooShort)
+    }
     match crypto_box::open_precomputed(packet_end, nonce, &shared_secret) {
-        Err(_) => None, // Authentication failed
+        Err(_) => Err(AuthFailure::CorruptedPacket),
         Ok(buf) => {
             let mut pk = [0u8; crypto_box::PUBLICKEYBYTES];
             pk.copy_from_slice(&buf[0..crypto_box::PUBLICKEYBYTES]);
             let their_temp_pk = crypto_box::PublicKey::from_slice(&pk).unwrap();
             let data = buf[crypto_box::PUBLICKEYBYTES..].to_vec();
-            Some((their_temp_pk, data))
+            Ok((their_temp_pk, data))
         },
     }
 }
+

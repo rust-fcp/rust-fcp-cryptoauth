@@ -12,7 +12,7 @@
 //!         .sender_perm_pub_key(&[3u8; 32])
 //!         .msg_auth_code(&[4u8; 16])
 //!         .sender_encrypted_temp_pub_key(&[5u8; 32])
-//!         .encrypted_data(vec![6u8, 7u8, 8u8])
+//!         .encrypted_data(&vec![6u8, 7u8, 8u8])
 //!         .finalize()
 //!         .unwrap();
 //! assert_eq!(packet.packet_type(), Ok(HandshakePacketType::Key));
@@ -253,9 +253,18 @@ impl HandshakePacketBuilder {
     }
 
     /// Sets the packet's encrypted “piggy-backed” data.
-    pub fn encrypted_data(mut self, mut encrypted_data: Vec<u8>) -> HandshakePacketBuilder {
+    pub fn encrypted_data(mut self, encrypted_data: &[u8]) -> HandshakePacketBuilder {
         self.raw.truncate(120);
-        self.raw.append(&mut encrypted_data);
+        self.raw.extend_from_slice(encrypted_data);
+        self
+    }
+
+    /// Sets the packet's msg_auth_code, sender_encrypted_temp_pub_key,
+    /// and encrypted_data concatenated in that order.
+    /// The purpose is to use it as output of the 'seal' cryptographic primitive.
+    pub fn sealed_data(mut self, sealed_data: &[u8]) -> HandshakePacketBuilder {
+        self.raw.truncate(72);
+        self.raw.extend_from_slice(sealed_data);
         self
     }
 

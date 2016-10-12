@@ -1,8 +1,8 @@
 //! Creates and reads CryptoAuth Hello packets
 use cryptography::{crypto_box, open_packet_end, shared_secret_from_password, shared_secret_from_keys};
-use cryptography::crypto_box::{PublicKey, SecretKey, PrecomputedKey, Nonce};
-use keys;
-use authentication::{AuthChallenge, AuthFailure};
+use cryptography::crypto_box::{PublicKey, PrecomputedKey, Nonce};
+use authentication::AuthChallenge;
+use auth_failure::AuthFailure;
 use session::{Session, SessionState};
 use handshake_packet::{HandshakePacket, HandshakePacketBuilder, HandshakePacketType};
 use passwords::PasswordStore;
@@ -28,12 +28,12 @@ use passwords::PasswordStore;
 /// let password = "bar".to_owned().into_bytes();
 /// let challenge = AuthChallenge::LoginPassword { login: login, password: password };
 ///
-/// let hello = create_next_handshake_packet(&mut session, &challenge);
+/// let hello = create_next_handshake_packet(&mut session, &challenge, &vec![]);
 /// let bytes = hello.raw;
 /// println!("{:?}", bytes);
 /// ```
-pub fn create_next_handshake_packet(session: &mut Session, challenge: &AuthChallenge) -> HandshakePacket {
-    let (packet, new_session_state) = match session.state.clone() { // TODO: do not clone
+pub fn create_next_handshake_packet(session: &mut Session, challenge: &AuthChallenge, data: &[u8]) -> HandshakePacket {
+    match session.state.clone() { // TODO: do not clone
         SessionState::UninitializedUnknownPeer => {
             panic!("Trying to send a packet to a totally unknown peer. We need at least a Challenge or a PasswordStore to do that.")
         },
@@ -41,55 +41,41 @@ pub fn create_next_handshake_packet(session: &mut Session, challenge: &AuthChall
             // If we have not sent or received anything yet, send Hello
             // and set the state to SentHello.
             let handshake_nonce = crypto_box::gen_nonce();
-            let shared_secret_key = challenge.make_shared_secret_key(session);
-            let packet = create_hello(session, &handshake_nonce, &challenge, false);
-            let state = SessionState::SentHello {
+            let shared_secret_key = shared_secret_from_keys(
+                        &session.my_temp_sk, &session.their_perm_pk);
+            session.state = SessionState::SentHello {
                 handshake_nonce: handshake_nonce,
                 shared_secret_key: shared_secret_key,
                 };
-            (packet, state)
+            create_hello(session, &handshake_nonce, &challenge, false, data)
         },
-        SessionState::SentHello { handshake_nonce, shared_secret_key } => {
+        SessionState::SentHello { handshake_nonce, .. } => {
             // If we already sent Hello but nothing else, and not received
             // anything, repeat the Hello and keep the state unchanged.
-            let shared_secret_key = challenge.make_shared_secret_key(session);
-            let packet = create_hello(session, &handshake_nonce, &challenge, true);
-            let state = SessionState::SentHello {
-                handshake_nonce: handshake_nonce,
-                shared_secret_key: shared_secret_key,
-                };
-            (packet, state)
+            create_hello(session, &handshake_nonce, &challenge, true, data)
         },
         SessionState::ReceivedHello { their_temp_pk, handshake_nonce, shared_secret_key } => {
             // If we received an Hello but nothing else, and did not
             // send any reply to the Hello, send Key and set the state
             // to SentKey
-            let packet = create_key(session, &their_temp_pk, &handshake_nonce, &shared_secret_key, false);
-            let state = SessionState::SentKey {
+            let packet = create_key(session, &handshake_nonce, &shared_secret_key, false, data);
+            session.state = SessionState::SentKey {
                 their_temp_pk: their_temp_pk,
                 handshake_nonce: handshake_nonce,
                 shared_secret_key: shared_secret_key,
                 };
-            (packet, state)
+            packet
         },
-        SessionState::SentKey { their_temp_pk, handshake_nonce, shared_secret_key } => {
+        SessionState::SentKey { handshake_nonce, shared_secret_key, .. } => {
             // If we received an Hello but nothing else, and did not send
             // anything other than key, repeat Key and keep the state
             // unchanged.
-            let packet = create_key(session, &their_temp_pk, &handshake_nonce, &shared_secret_key, true);
-            let state = SessionState::SentKey {
-                their_temp_pk: their_temp_pk,
-                handshake_nonce: handshake_nonce,
-                shared_secret_key: shared_secret_key,
-                };
-            (packet, state)
+            create_key(session, &handshake_nonce, &shared_secret_key, true, data)
         },
         SessionState::Established { .. } => {
             panic!("Tried to create an handshake packet for an established session.")
         },
-    };
-    session.state = new_session_state;
-    packet
+    }
 }
 
 /// Creates an Hello packet
@@ -97,7 +83,8 @@ fn create_hello(
         session: &Session,
         nonce: &crypto_box::Nonce,
         challenge: &AuthChallenge,
-        repeat: bool
+        repeat: bool,
+        data: &[u8],
         ) -> HandshakePacket {
 
     let packet_type = if repeat {
@@ -108,7 +95,8 @@ fn create_hello(
     };
 
     let shared_secret_key = challenge.make_shared_secret_key(session);
-    let (msg_auth_code, my_encrypted_temp_pk) = create_msg_end(session, nonce, &shared_secret_key);
+    let (msg_auth_code, my_encrypted_temp_pk, encrypted_data) =
+            create_msg_end(session, nonce, &shared_secret_key, data);
 
     let packet = HandshakePacketBuilder::new()
             .packet_type(&packet_type)
@@ -117,6 +105,7 @@ fn create_hello(
             .sender_perm_pub_key(&session.my_perm_pk.0)
             .msg_auth_code(&msg_auth_code)
             .sender_encrypted_temp_pub_key(&my_encrypted_temp_pk)
+            .encrypted_data(&encrypted_data)
             .finalize().unwrap();
     packet
 }
@@ -124,10 +113,10 @@ fn create_hello(
 /// Creates a Key packet
 fn create_key(
         session: &Session,
-        their_temp_pk: &PublicKey,
         nonce: &Nonce,
         shared_secret_key: &PrecomputedKey,
-        repeat: bool
+        repeat: bool,
+        data: &[u8],
         ) -> HandshakePacket {
 
     let packet_type = if repeat {
@@ -137,7 +126,8 @@ fn create_key(
         HandshakePacketType::Key
     };
 
-    let (msg_auth_code, my_encrypted_temp_pk) = create_msg_end(session, nonce, shared_secret_key);
+    let (msg_auth_code, my_encrypted_temp_pk, encrypted_data) =
+            create_msg_end(session, nonce, shared_secret_key, data);
 
     let packet = HandshakePacketBuilder::new()
             .packet_type(&packet_type)
@@ -146,14 +136,15 @@ fn create_key(
             .sender_perm_pub_key(&session.my_perm_pk.0)
             .msg_auth_code(&msg_auth_code)
             .sender_encrypted_temp_pub_key(&my_encrypted_temp_pk)
+            .encrypted_data(&encrypted_data)
             .finalize().unwrap();
     packet
 }
 
 /// Returns the msg_auth_code and sender_encrypted_temp_pk fields
 /// of a packet.
-fn create_msg_end(session: &Session, nonce: &Nonce, shared_secret_key: &PrecomputedKey)
-        -> ([u8; crypto_box::MACBYTES], [u8; crypto_box::PUBLICKEYBYTES]) {
+fn create_msg_end(session: &Session, nonce: &Nonce, shared_secret_key: &PrecomputedKey, data: &[u8])
+        -> ([u8; crypto_box::MACBYTES], [u8; crypto_box::PUBLICKEYBYTES], Vec<u8>) {
     use hex::ToHex;
     println!("Encrypting temp pk {} with nonce {} and secret {}",
             session.my_temp_pk.0.to_vec().to_hex(),
@@ -161,15 +152,19 @@ fn create_msg_end(session: &Session, nonce: &Nonce, shared_secret_key: &Precompu
             shared_secret_key.0.to_vec().to_hex());
     // This part is a bit tricky. Hold on tight.
 
+    let mut buf = Vec::with_capacity(crypto_box::PUBLICKEYBYTES+data.len());
+    buf.extend_from_slice(&session.my_temp_pk.0);
+    buf.extend_from_slice(data);
+
     // Here, we will encrypt the temp pub *key* using the *shared secret*.
     // This may seem counter-intuitive; but it is actually valid because
     // encryption keys and symmetric secrets all are 32-bits long.
     let authenticated_sealed_temp_pk = crypto_box::seal_precomputed(
-            &session.my_temp_pk.0, // We encrypt the temp pub key
+            &buf, // We encrypt the temp pub key
             &nonce, // with the Nonce
             &shared_secret_key, // using the shared secret.
             );
-    assert_eq!(authenticated_sealed_temp_pk.len(), 16+32);
+    assert!(authenticated_sealed_temp_pk.len() >= 16+32+data.len());
 
     // The seal_precomputed function will return a buffer containing
     // 16 bytes of MAC (msg auth code), followed by 32 bytes of encrypted data
@@ -181,72 +176,125 @@ fn create_msg_end(session: &Session, nonce: &Nonce, shared_secret_key: &Precompu
     msg_auth_code.copy_from_slice(&authenticated_sealed_temp_pk[0..16]);
     let mut my_encrypted_temp_pk = [0u8; 32];
     my_encrypted_temp_pk.copy_from_slice(&authenticated_sealed_temp_pk[16..48]);
+    let mut encrypted_data = Vec::with_capacity(authenticated_sealed_temp_pk.len()-48);
+    encrypted_data.extend_from_slice(&authenticated_sealed_temp_pk[48..]);
 
     // Remark: actually, we could do this faster. Here, we split the
-    // sealed value into msg_auth_code and sender_encrypted_temp_pub_key,
+    // sealed value into msg_auth_code, sender_encrypted_temp_pub_key,
+    // and data;
     // but these too value are then concatenated in the same order in
     // the packet's serialization.
     // But I prefer to keep the code readable.
 
-    (msg_auth_code, my_encrypted_temp_pk)
+    (msg_auth_code, my_encrypted_temp_pk, encrypted_data)
 }
 
 
-/// Read a network packet, assumed to be an Hello or a RepeatHello.
+/// Returns the public key of a Hello
 ///
-/// TODO: improve error return
-pub fn parse_handshake_packet<'a, Peer: Clone>(
+/// Returns None if and only if it was not a Hello packet.
+pub fn pre_parse_hello_packet(packet: &HandshakePacket) -> Option<PublicKey> {
+    match packet.packet_type() {
+        Ok(HandshakePacketType::Hello) |
+        Ok(HandshakePacketType::RepeatHello) => {
+            Some(PublicKey::from_slice(&packet.sender_perm_pub_key()).unwrap())
+        },
+        _ => None,
+    }
+}
+
+/// Read a network packet.
+///
+/// The peer result is None only if this is a key packet.
+pub fn parse_handshake_packet<Peer: Clone>(
         session: &mut Session,
-        password_store: &'a PasswordStore<Peer>,
+        password_store: &PasswordStore<Peer>,
         packet: &HandshakePacket,
-        ) -> Result<(&'a Peer, Vec<u8>), AuthFailure> {
+        ) -> Result<(Option<Peer>, Vec<u8>), AuthFailure> {
     let packet_type = match packet.packet_type() {
         Err(_) => panic!("Non-handshake packet passed to parse_handshake_packet"),
         Ok(packet_type) => packet_type,
     };
 
-    let (shared_secret_key, their_temp_pk, nonce, peer, data) = 
-            try!(authenticate_packet_author(session, password_store, packet));
-    // Below, we are sure this packet is from this peer.
-    session.state = update_session_state_on_received_packet(
-            session, packet, &packet_type, shared_secret_key, their_temp_pk, nonce,
-            password_store);
-    Ok((peer, data))
-}
-
-
-// Should only be called for authenticated packets.
-fn update_session_state_on_received_packet<Peer: Clone>(
-        session: &mut Session,
-        packet: &HandshakePacket,
-        packet_type: &HandshakePacketType,
-        shared_secret_key: PrecomputedKey,
-        their_temp_pk: PublicKey,
-        nonce: Nonce,
-        password_store: &PasswordStore<Peer>,
-        ) -> SessionState {
-    match *packet_type {
+    match packet_type {
         HandshakePacketType::Hello | HandshakePacketType::RepeatHello => {
-            update_session_state_on_received_hello(
-                    session, packet, shared_secret_key, their_temp_pk, nonce,
-                    password_store)
+            let (peer, data) = try!(parse_hello_packet(session, password_store, packet));
+            Ok((Some(peer), data))
         }
         HandshakePacketType::Key | HandshakePacketType::RepeatKey => {
-            update_session_state_on_received_key(
-                    session, packet, shared_secret_key, their_temp_pk, nonce,
-                    password_store)
-        }
+            let data = try!(parse_key_packet(session, packet));
+            Ok((None, data))
+        },
+    }
+}
+
+/// Read a network packet, assumed to be an Hello or a RepeatHello.
+pub fn parse_hello_packet<Peer: Clone>(
+        session: &mut Session,
+        password_store: &PasswordStore<Peer>,
+        packet: &HandshakePacket,
+        ) -> Result<(Peer, Vec<u8>), AuthFailure> {
+
+    match packet.packet_type() {
+        Err(_) => panic!("Non-handshake packet passed to parse_hello_packet"),
+        Ok(HandshakePacketType::Hello) | Ok(HandshakePacketType::RepeatHello) => {}
+        _ => panic!("Non-hello handshake packet passed to parse_hello_packet"),
+    };
+
+    let (their_temp_pk, nonce, peer, data) =
+            try!(authenticate_packet_author(session, password_store, packet));
+
+    // Below, we are sure this packet is from this peer.
+    session.state = update_session_state_on_received_hello(
+                    session, packet, their_temp_pk, nonce);
+    Ok((peer.clone(), data))
+}
+
+/// Read a network packet, assumed to be an Key or RepeatKey
+pub fn parse_key_packet(
+        session: &mut Session,
+        packet: &HandshakePacket,
+        ) -> Result<Vec<u8>, AuthFailure> {
+
+    match packet.packet_type() {
+        Err(_) => panic!("Non-handshake packet passed to parse_key_packet"),
+        Ok(HandshakePacketType::Key) | Ok(HandshakePacketType::RepeatKey) => {}
+        _ => panic!("Non-key handshake packet passed to parse_key_packet"),
+    };
+
+    // If this is a key packet, do not check its auth.
+    match session.state.clone() { // TODO: do not clone
+        SessionState::SentHello { shared_secret_key, .. } => {
+            // Obviously, only allow key packets if we sent an hello.
+            // Also make sure the packet is authenticated with the
+            // shared secret.
+            use hex::ToHex;
+            let nonce = crypto_box::Nonce::from_slice(&packet.random_nonce()).unwrap();
+            println!("Decrypting with nonce {} and shared_sk {}",
+                    nonce.0.to_vec().to_hex(),
+                    shared_secret_key.0.to_vec().to_hex());
+            match open_packet_end(packet.sealed_data(), &shared_secret_key, &nonce) {
+                Ok((their_temp_pk, data)) => {
+                    // authentication succeeded
+                    session.state = update_session_state_on_received_key(
+                                    session, packet, their_temp_pk);
+                    Ok(data)
+                }
+                Err(_) => {
+                    println!("foo");
+                    Err(AuthFailure::CorruptedPacket)},
+            }
+        },
+        _ => Err(AuthFailure::UnexpectedPacket),
     }
 }
 
 // Should only be called for authenticated packets.
-fn update_session_state_on_received_hello<Peer: Clone>(
+fn update_session_state_on_received_hello(
         session: &mut Session,
         packet: &HandshakePacket,
-        shared_secret_key: PrecomputedKey,
         their_temp_pk: PublicKey,
         nonce: Nonce,
-        password_store: &PasswordStore<Peer>,
         ) -> SessionState {
     // This function is a huge case disjunction. I am very sorry if you
     // have to read this, but we have to do it at some point.
@@ -302,23 +350,16 @@ fn update_session_state_on_received_hello<Peer: Clone>(
 }
 
 // Should only be called for authenticated packets.
-fn update_session_state_on_received_key<Peer: Clone>(
+fn update_session_state_on_received_key(
         session: &Session,
         packet: &HandshakePacket,
-        shared_secret_key: PrecomputedKey,
         their_temp_pk: PublicKey,
-        nonce: Nonce,
-        password_store: &PasswordStore<Peer>,
         ) -> SessionState {
     assert!(packet.packet_type() == Ok(HandshakePacketType::Key) ||
             packet.packet_type() == Ok(HandshakePacketType::RepeatKey));
-    match session.state.clone() { // TODO: do not clone
-        SessionState::SentHello { handshake_nonce, shared_secret_key } => {
-            let mut nonce = [0u8; crypto_box::NONCEBYTES];
-            nonce[crypto_box::NONCEBYTES-1] = 4u8;
-            let nonce = Nonce::from_slice(&nonce);
+    match session.state {
+        SessionState::SentHello { .. } => {
             SessionState::Established {
-                nonce: nonce.unwrap(),
                 their_temp_pk: their_temp_pk,
                 shared_secret_key: shared_secret_from_keys(
                         &session.my_temp_sk, &their_temp_pk),
@@ -337,12 +378,12 @@ fn update_session_state_on_received_key<Peer: Clone>(
 
 /// Tries to authenticate the author of the packet against the
 /// `password_store`. If authentication was successful, returns
-/// `Some((shared_secret_key, their_temp_pk, peer, data))`
+/// `Some((their_temp_pk, peer, data))`
 fn authenticate_packet_author<'a, Peer: Clone>(
         session: &Session,
         password_store: &'a PasswordStore<Peer>,
         packet: &HandshakePacket,
-        ) -> Result<(PrecomputedKey, PublicKey, Nonce, &'a Peer, Vec<u8>), AuthFailure> { 
+        ) -> Result<(PublicKey, Nonce, &'a Peer, Vec<u8>), AuthFailure> { 
     let mut hash_code = [0u8; 7];
     hash_code.copy_from_slice(&packet.auth_challenge()[1..8]);
     let candidates_opt = match packet.auth_challenge()[0] {
@@ -366,14 +407,18 @@ fn authenticate_packet_author<'a, Peer: Clone>(
         return Err(AuthFailure::WrongPublicKey);
     }
 
+    let nonce = crypto_box::Nonce::from_slice(&packet.random_nonce()).unwrap();
+
     for &(ref password, ref peer) in candidates {
-        let nonce = crypto_box::Nonce::from_slice(&packet.random_nonce()).unwrap();
         let shared_secret = shared_secret_from_password(
                 password, &session.my_perm_sk, &their_perm_pk);
         let shared_secret_key = PrecomputedKey::from_slice(&shared_secret).unwrap();
-        let packet_end = open_packet_end(packet.sealed_data(), &shared_secret_key, &nonce);
-        if let Some((their_temp_pk, data)) = packet_end {
-            return Ok((shared_secret_key, their_temp_pk, nonce, peer, data))
+        match open_packet_end(packet.sealed_data(), &shared_secret_key, &nonce) {
+            Ok((their_temp_pk, data)) => {
+                return Ok((their_temp_pk, nonce, peer, data))
+            }
+            Err(_) => {
+            }
         }
     };
     Err(AuthFailure::InvalidCredentials)
@@ -392,13 +437,13 @@ fn test_parse_handshake_password() {
 
     let raw = Vec::from_hex("0000000101ed58a609bc994800000000551ae6bc4940ff2e1f4e9cba228ebe0a18ed77a2ee0a7bb10286fe4b2c3e74fe4f5ceb2f524c81fabe8a94fa41daa65394900f53079d0a1497cdd55def51daf65a45027745706d1673d7a3c8946fa043923e46772284475b26ea71f504055537547c4276d92a013740ab42c612516c69ad8b524d11b55eff7f8976512248806104f0ec4f3e62f8f40926af4cfcad7e79").unwrap();
     let packet = HandshakePacket { raw: raw };
-    let mut store = PasswordStore::new(session.my_perm_sk.clone());
-    store.add_peer(&"foo".as_bytes().to_vec(), "bar".as_bytes().to_vec(), &session.their_perm_pk, "my friend".to_owned());
+    let mut store = PasswordStore::new();
+    store.add_peer(Some(&"foo".as_bytes().to_vec()), "bar".as_bytes().to_vec(), "my friend".to_owned());
 
     assert_eq!(packet.sender_perm_pub_key(), session.their_perm_pk.0);
     match parse_handshake_packet(&mut session, &store, &packet) {
         Err(_) => assert!(false),
-        Ok((peer, _data)) => assert_eq!(peer, &"my friend".to_owned()),
+        Ok((peer, _data)) => assert_eq!(peer, Some("my friend".to_owned())),
     }
 }
 
@@ -415,12 +460,12 @@ fn test_parse_handshake_login() {
 
     let raw = Vec::from_hex("000000010226b46b68ffc68f00000000172d7a21645efff9ef874a9094351e870f622537ea208e7f0286fe4b2c3e74fe4f5ceb2f524c81fabe8a94fa41daa65394900f53079d0a14aa670e527964f576521d63c72b1398c19438ea7b661c7dec59e67b86bddf128705108782d53d22742a6b5d2baa6b23af26e154f87678322f0e43eea7a82563e655c36d6126881ec44d0e44ba659c21cafdb3a8017c4ccdc7").unwrap();
     let packet = HandshakePacket { raw: raw };
-    let mut store = PasswordStore::new(session.my_perm_sk.clone());
-    store.add_peer(&"foo".as_bytes().to_vec(), "bar".as_bytes().to_vec(), &session.their_perm_pk, "my friend".to_owned());
+    let mut store = PasswordStore::new();
+    store.add_peer(Some(&"foo".as_bytes().to_vec()), "bar".as_bytes().to_vec(), "my friend".to_owned());
 
     assert_eq!(packet.sender_perm_pub_key(), session.their_perm_pk.0);
     match parse_handshake_packet(&mut session, &store, &packet) {
         Err(_) => assert!(false),
-        Ok((peer, _data)) => assert_eq!(peer, &"my friend".to_owned()),
+        Ok((peer, _data)) => assert_eq!(peer, Some("my friend".to_owned())),
     }
 }

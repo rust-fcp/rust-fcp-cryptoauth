@@ -131,12 +131,3 @@ impl AuthChallenge {
         PrecomputedKey::from_slice(&self.make_shared_secret(session)).unwrap()
     }
 }
-
-#[derive(Debug)]
-#[derive(Clone)]
-pub enum AuthFailure {
-    UnknownAuthMethod(u8), // An incoming peer tried an auth method that is not None/Password/LoginPassword
-    AuthNone, // An incoming peer tried to connect with None auth.
-    InvalidCredentials, // An incoming peer tried to connect with credentials unknown to us.
-    WrongPublicKey, // A peer used a public key different than expected.
-}

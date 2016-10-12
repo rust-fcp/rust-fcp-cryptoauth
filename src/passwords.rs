@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 
-use cryptography::crypto_box::{PublicKey, SecretKey};
 use cryptography::sha256;
 
 pub struct PasswordStore<Peer: Clone> {
-    my_perm_sk: SecretKey,
     // sha256(sha256(password))[1..7] -> (password, peer)
     password_peers: HashMap<[u8; 7], Vec<(Vec<u8>, Peer)>>,
     // sha256(login)[1..7] -> (password, peer)
@@ -12,11 +10,11 @@ pub struct PasswordStore<Peer: Clone> {
 }
 
 impl<Peer: Clone> PasswordStore<Peer> {
-    pub fn new(my_perm_sk: SecretKey) -> PasswordStore<Peer> {
-        PasswordStore { my_perm_sk: my_perm_sk, password_peers: HashMap::new(), login_peers: HashMap::new() }
+    pub fn new() -> PasswordStore<Peer> {
+        PasswordStore { password_peers: HashMap::new(), login_peers: HashMap::new() }
     }
 
-    fn add_password_peer(&mut self, password: Vec<u8>, their_perm_pk: &PublicKey, peer: Peer) {
+    fn add_password_peer(&mut self, password: Vec<u8>, peer: Peer) {
         let doublehashed_password = sha256::hash(&sha256::hash(&password).0);
         let mut bucket = {
             let hashed_password_slice = &doublehashed_password[1..8];
@@ -31,7 +29,7 @@ impl<Peer: Clone> PasswordStore<Peer> {
         bucket.push((password, peer));
     }
 
-    fn add_login_peer(&mut self, login: &Vec<u8>, password: Vec<u8>, their_perm_pk: &PublicKey, peer: Peer) {
+    fn add_login_peer(&mut self, login: &Vec<u8>, password: Vec<u8>, peer: Peer) {
         let hashed_login = sha256::hash(login);
         let mut bucket = {
             let hashed_login_slice = &hashed_login[1..8];
@@ -46,9 +44,12 @@ impl<Peer: Clone> PasswordStore<Peer> {
         bucket.push((password, peer));
     }
 
-    pub fn add_peer(&mut self, login: &Vec<u8>, password: Vec<u8>, their_perm_pk: &PublicKey, peer: Peer) {
-        self.add_password_peer(password.clone(), their_perm_pk, peer.clone());
-        self.add_login_peer(login, password, their_perm_pk, peer);
+    pub fn add_peer(&mut self, login: Option<&Vec<u8>>, password: Vec<u8>, peer: Peer) {
+        self.add_password_peer(password.clone(), peer.clone());
+        match login {
+            Some(login) => self.add_login_peer(login, password, peer),
+            None => (),
+        };
     }
 
     /// Returns all peers whose sha256(sha256(password))[1..7] match

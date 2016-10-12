@@ -24,8 +24,8 @@ pub fn main() {
     let login = "foo".to_owned().into_bytes();
     let password = "bar".to_owned().into_bytes();
 
-    let mut store = PasswordStore::new(my_sk.clone());
-    store.add_peer(&login, password.clone(), &their_pk, "my friend");
+    let mut store = PasswordStore::new();
+    store.add_peer(Some(&login), password.clone(), "my friend");
 
     let challenge = AuthChallenge::LoginPassword { login: login, password: password };
     let initial_state = SessionState::UninitializedKnownPeer;
@@ -35,7 +35,7 @@ pub fn main() {
     let dest = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 54321);
 
     println!("Sending hello.");
-    let hello = create_next_handshake_packet(&mut session, &challenge);
+    let hello = create_next_handshake_packet(&mut session, &challenge, &vec![]);
     println!("Session state: {:?}", session.state);
     println!("{:?}", hello);
     assert_eq!(hello.packet_type().unwrap(), HandshakePacketType::Hello);
@@ -53,7 +53,7 @@ pub fn main() {
     assert_eq!(packet.sender_perm_pub_key(), session.their_perm_pk.0);
     match parse_handshake_packet(&mut session, &store, &packet) {
         Err(e) => println!("Error: {:?}", e),
-        Ok(peer) => println!("{:?} from: {:?}", packet.packet_type(), peer),
+        Ok((peer, _data)) => println!("{:?} from: {:?}", packet.packet_type(), peer),
     }
 
     if let SessionState::Established { .. } = session.state {
@@ -62,7 +62,7 @@ pub fn main() {
     else if let SessionState::ReceivedHello { .. } = session.state {
         // Send Key
         println!("Sending key.");
-        let key = create_next_handshake_packet(&mut session, &challenge);
+        let key = create_next_handshake_packet(&mut session, &challenge, &vec![]);
         println!("Session state: {:?}", session.state);
         println!("{:?}", key);
         assert_eq!(key.packet_type().unwrap(), HandshakePacketType::Key);
