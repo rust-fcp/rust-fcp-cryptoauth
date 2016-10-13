@@ -36,6 +36,7 @@ pub fn main() {
 
     println!("Sending hello.");
     let hello = create_next_handshake_packet(&mut session, &challenge, &vec![]);
+    let hello = hello.unwrap();
     println!("Session state: {:?}", session.state);
     println!("{:?}", hello);
     assert_eq!(hello.packet_type().unwrap(), HandshakePacketType::Hello);
@@ -63,6 +64,7 @@ pub fn main() {
         // Send Key
         println!("Sending key.");
         let key = create_next_handshake_packet(&mut session, &challenge, &vec![]);
+        let key = key.unwrap();
         println!("Session state: {:?}", session.state);
         println!("{:?}", key);
         assert_eq!(key.packet_type().unwrap(), HandshakePacketType::Key);

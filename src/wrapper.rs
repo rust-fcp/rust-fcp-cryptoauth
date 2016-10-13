@@ -192,8 +192,11 @@ impl<PeerId: Clone> Wrapper<PeerId> {
             SessionState::UninitializedKnownPeer |
             SessionState::SentHello { .. } |
             SessionState::ReceivedHello { .. } |
+            SessionState::WaitingKey { .. } |
             SessionState::SentKey { .. } => {
-                packets.push(handshake::create_next_handshake_packet(&mut self.session, &self.my_credentials, msg).raw)
+                if let Some(packet) = handshake::create_next_handshake_packet(&mut self.session, &self.my_credentials, msg) {
+                    packets.push(packet.raw);
+                }
             },
             SessionState::Established { ref shared_secret_key, .. } => {
                 packets.push(connection::seal_message(
@@ -244,6 +247,7 @@ impl<PeerId: Clone> Wrapper<PeerId> {
                     SessionState::UninitializedUnknownPeer |
                     SessionState::UninitializedKnownPeer |
                     SessionState::SentHello { .. } |
+                    SessionState::WaitingKey { .. } |
                     SessionState::ReceivedHello { .. } => {
                         if packet_first_four_bytes == 0 {
                             Err(AuthFailure::PacketTooShort(format!("Size: {}, but I am in state {:?}", packet.len(), self.session.state)))
@@ -284,6 +288,7 @@ impl<PeerId: Clone> Wrapper<PeerId> {
                     SessionState::Established { .. } => {
                         Err(AuthFailure::UnexpectedPacket("Received a key packet while expecting a data packet.".to_owned()))
                     },
+                    SessionState::WaitingKey { .. } |
                     SessionState::SentHello { .. } => {
                         let msg = try!(handshake::parse_key_packet(
                                 &mut self.session, &HandshakePacket { raw: packet }));
@@ -314,10 +319,15 @@ impl<PeerId: Clone> Wrapper<PeerId> {
             },
             SessionState::UninitializedKnownPeer |
             SessionState::SentHello { .. } |
+            SessionState::WaitingKey { .. } |
             SessionState::ReceivedHello { .. } |
             SessionState::SentKey { .. } => {
-                let packet = handshake::create_next_handshake_packet(&mut self.session, &self.my_credentials, &vec![]).raw;
-                vec![packet]
+                if let Some(packet) = handshake::create_next_handshake_packet(&mut self.session, &self.my_credentials, &vec![]) {
+                    vec![packet.raw]
+                }
+                else {
+                    vec![]
+                }
             },
             SessionState::Established { .. } => {
                 vec![]
@@ -333,6 +343,7 @@ impl<PeerId: Clone> Wrapper<PeerId> {
                 ConnectionState::Uninitialized
             },
             SessionState::SentHello { .. } |
+            SessionState::WaitingKey { .. } |
             SessionState::ReceivedHello { .. } |
             SessionState::SentKey { .. } => {
                 ConnectionState::Handshake

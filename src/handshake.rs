@@ -28,11 +28,11 @@ use passwords::PasswordStore;
 /// let password = "bar".to_owned().into_bytes();
 /// let challenge = Credentials::LoginPassword { login: login, password: password };
 ///
-/// let hello = create_next_handshake_packet(&mut session, &challenge, &vec![]);
+/// let hello = create_next_handshake_packet(&mut session, &challenge, &vec![]).unwrap();
 /// let bytes = hello.raw;
 /// println!("{:?}", bytes);
 /// ```
-pub fn create_next_handshake_packet(session: &mut Session, challenge: &Credentials, data: &[u8]) -> HandshakePacket {
+pub fn create_next_handshake_packet(session: &mut Session, challenge: &Credentials, data: &[u8]) -> Option<HandshakePacket> {
     match session.state.clone() { // TODO: do not clone
         SessionState::UninitializedUnknownPeer => {
             panic!("Trying to send a packet to a totally unknown peer. We need at least a Challenge or a PasswordStore to do that.")
@@ -47,12 +47,12 @@ pub fn create_next_handshake_packet(session: &mut Session, challenge: &Credentia
                 handshake_nonce: handshake_nonce,
                 shared_secret_key: shared_secret_key,
                 };
-            create_hello(session, &handshake_nonce, &challenge, false, data)
+            Some(create_hello(session, &handshake_nonce, &challenge, false, data))
         },
         SessionState::SentHello { handshake_nonce, .. } => {
             // If we already sent Hello but nothing else, and not received
             // anything, repeat the Hello and keep the state unchanged.
-            create_hello(session, &handshake_nonce, &challenge, true, data)
+            Some(create_hello(session, &handshake_nonce, &challenge, true, data))
         },
         SessionState::ReceivedHello { their_temp_pk, handshake_nonce, shared_secret_key } => {
             // If we received an Hello but nothing else, and did not
@@ -64,13 +64,16 @@ pub fn create_next_handshake_packet(session: &mut Session, challenge: &Credentia
                 handshake_nonce: handshake_nonce,
                 shared_secret_key: shared_secret_key,
                 };
-            packet
+            Some(packet)
+        },
+        SessionState::WaitingKey { .. } => {
+            None
         },
         SessionState::SentKey { handshake_nonce, shared_secret_key, .. } => {
             // If we received an Hello but nothing else, and did not send
             // anything other than key, repeat Key and keep the state
             // unchanged.
-            create_key(session, &handshake_nonce, &shared_secret_key, true, data)
+            Some(create_key(session, &handshake_nonce, &shared_secret_key, true, data))
         },
         SessionState::Established { .. } => {
             panic!("Tried to create an handshake packet for an established session.")
@@ -264,6 +267,7 @@ pub fn parse_key_packet(
 
     // If this is a key packet, do not check its auth.
     match session.state.clone() { // TODO: do not clone
+        SessionState::WaitingKey { shared_secret_key, .. } |
         SessionState::SentHello { shared_secret_key, .. } => {
             // Obviously, only allow key packets if we sent an hello.
             // Also make sure the packet is authenticated with the
@@ -309,7 +313,8 @@ fn update_session_state_on_received_hello(
             // one with the lower key win.
             if session.my_perm_pk < session.their_perm_pk {
                 // I win. Keep my hello.
-                SessionState::SentHello {
+                SessionState::WaitingKey {
+                    their_temp_pk: their_temp_pk,
                     handshake_nonce: nonce, // XXX: should we use the other peer's nonce?
                     shared_secret_key: shared_secret_key,
                     }
@@ -335,6 +340,7 @@ fn update_session_state_on_received_hello(
         },
         SessionState::UninitializedKnownPeer { .. } |
         SessionState::ReceivedHello { .. } |
+        SessionState::WaitingKey { .. } |
         SessionState::SentKey { .. } |
         SessionState::Established { .. } => {
             // Reset the session
@@ -358,6 +364,7 @@ fn update_session_state_on_received_key(
     assert!(packet.packet_type() == Ok(HandshakePacketType::Key) ||
             packet.packet_type() == Ok(HandshakePacketType::RepeatKey));
     match session.state {
+        SessionState::WaitingKey { .. } |
         SessionState::SentHello { .. } => {
             SessionState::Established {
                 their_temp_pk: their_temp_pk,
