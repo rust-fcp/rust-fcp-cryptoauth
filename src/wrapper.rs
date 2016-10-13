@@ -1,13 +1,13 @@
 //! Main wrapper function for CryptoAuth connections.
 //! For normal usage of CryptoAuth, everything you need should be
-//! in this module.
+//! in this module (or reexported by it).
 //!
 //! This module's public interface is also less likely to change
 //! in future versions of CryptoAuth.
 //!
 //! If you do not need access to CryptoAuth packets or change the
 //! authentication logic, and you ever see something you need is not
-//! available in this module, please report it.
+//! available in this module (or reexported by it), please report it.
 
 use std::collections::HashMap;
 
@@ -15,46 +15,47 @@ use passwords::PasswordStore;
 use session::{Session, SessionState};
 use handshake;
 use handshake_packet::{HandshakePacket, HandshakePacketType};
-use authentication::AuthChallenge;
 use connection;
 
-pub use cryptography::crypto_box::{PublicKey, SecretKey};
+pub use cryptography::crypto_box::{PublicKey, SecretKey, gen_keypair};
 pub use keys::{FromBase32, FromHex};
 pub use auth_failure::AuthFailure;
-
-/// Used for specifying authorization credentials of a peer,
-/// either oneself or an incoming peer.
-#[derive(Eq)]
-#[derive(PartialEq)]
-#[derive(Hash)]
-#[derive(Clone)]
-pub struct Credentials {
-    pub login: Option<Vec<u8>>,
-    pub password: Vec<u8>,
-}
-
-impl Credentials {
-    fn to_auth_challenge(self) -> AuthChallenge {
-        match self.login {
-            Some(login) => AuthChallenge::LoginPassword { login: login, password: self.password },
-            None => AuthChallenge::Password { password: self.password },
-        }
-    }
-}
+pub use authentication::Credentials;
+pub use super::init;
 
 fn hashmap_to_password_store<PeerId: Clone>(mut map: HashMap<Credentials, PeerId>,) -> PasswordStore<PeerId> {
     let mut store = PasswordStore::new();
-    for (credential, peer_id) in map.drain() {
-        match credential.login {
-            Some(ref login) => store.add_peer(Some(login), credential.password, peer_id),
-            None => store.add_peer(None, credential.password, peer_id),
+    for (credentials, peer_id) in map.drain() {
+        match credentials {
+            Credentials::LoginPassword { login, password } => store.add_peer(Some(&login), password, peer_id),
+            Credentials::Password { password } => store.add_peer(None, password, peer_id),
+            Credentials::None => unimplemented!(),
         }
     }
     store
 }
 
+/// Used to report the state of the connection at a given time.
+#[derive(Eq)]
+#[derive(PartialEq)]
+#[derive(Clone)]
+#[derive(Debug)]
+pub enum ConnectionState {
+    /// No packet has been sent or received yet.
+    Uninitialized,
+    /// We are in the handshake phase. `wrap_message` will drop messages.
+    Handshake,
+    /// We are in the normal phase.
+    Established,
+}
+
 /// Main wrapper class around a connection.
 /// Provides methods to encrypt and decrypt messages.
+///
+/// This structure does not store arbitrary-sized messages from the
+/// network, only arrays whose size is statically known.
+/// This means that it cannot be used by network attackers to
+/// make it use all the memory on the system.
 pub struct Wrapper<PeerId: Clone> {
     my_credentials: Credentials,
     password_store: PasswordStore<PeerId>,
@@ -72,8 +73,10 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     /// `new_incoming_connection` and will be used if we have to reset
     /// the connection.
     ///
-    /// `peer_id` is an arbitrary value used internally to identify
-    /// the peer. It won't be sent over the network.
+    /// `peer_id` is an arbitrary value opaque to `fcp_cryptoauth`,
+    /// used by the calling library to identify the peer.
+    /// It does not have to be unique (even `()` works).
+    /// It won't be sent over the network by `fcp_cryptoauth`.
     pub fn new_outgoing_connection(
             my_pk: PublicKey, my_sk: SecretKey,
             their_pk: PublicKey,
@@ -118,13 +121,13 @@ impl<PeerId: Clone> Wrapper<PeerId> {
 
         match packet.packet_type() {
             Ok(HandshakePacketType::Hello) | Ok(HandshakePacketType::RepeatHello) => (),
-            _ => return Err(AuthFailure::UnexpectedPacket),
+            _ => return Err(AuthFailure::UnexpectedPacket(format!("Incoming connection started with a non-Hello packet ({:?}).", packet.packet_type()))),
         }
 
         let password_store = hashmap_to_password_store(allowed_peers);
         let their_pk = match handshake::pre_parse_hello_packet(&packet) {
             Some(their_pk) => their_pk,
-            None => return Err(AuthFailure::UnexpectedPacket),
+            None => panic!("pre_parse_hello_packet should not return None on Hello packets.'"),
         };
         let mut session = Session::new(
                 my_pk, my_sk, their_pk, SessionState::UninitializedUnknownPeer);
@@ -158,13 +161,16 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     /// to `wrap_message` / `wrap_message_immediately` made before
     /// the handshake is finished).
     pub fn wrap_message(&mut self, msg: &[u8]) -> Vec<Vec<u8>> {
+        // TODO: reininitialize the nonce if needed
+        let mut packets = self.upkeep();
         match self.session.state {
             SessionState::Established { ref shared_secret_key, .. } => {
-                vec![connection::seal_message(
-                        &mut self.session.my_last_nonce, shared_secret_key, msg)]
+                packets.push(connection::seal_message(
+                        &mut self.session.my_last_nonce, shared_secret_key, msg))
             }
-            _ => vec![] // forward-secrecy not yet available.
-        }
+            _ => {} // forward-secrecy not yet available.
+        };
+        packets
     }
 
     /// Similar to `wrap_message`, but tries to send the message
@@ -177,6 +183,8 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     /// it is passed to the first call of `wrap_message_immediately`
     /// of the session and `wrap_message` has never been called before.
     pub fn wrap_message_immediately(&mut self, msg: &[u8]) -> Vec<Vec<u8>> {
+        // TODO: reininitialize the nonce if needed
+        let mut packets = self.upkeep();
         match self.session.state {
             SessionState::UninitializedUnknownPeer => {
                 panic!("A Wrapper's Session state should never be UninitializedUnknownPeer.")
@@ -185,14 +193,14 @@ impl<PeerId: Clone> Wrapper<PeerId> {
             SessionState::SentHello { .. } |
             SessionState::ReceivedHello { .. } |
             SessionState::SentKey { .. } => {
-                let challenge = self.my_credentials.clone().to_auth_challenge();
-                vec![handshake::create_next_handshake_packet(&mut self.session, &challenge, msg).raw]
+                packets.push(handshake::create_next_handshake_packet(&mut self.session, &self.my_credentials, msg).raw)
             },
             SessionState::Established { ref shared_secret_key, .. } => {
-                vec![connection::seal_message(
-                        &mut self.session.my_last_nonce, &shared_secret_key, msg)]
+                packets.push(connection::seal_message(
+                        &mut self.session.my_last_nonce, &shared_secret_key, msg))
             },
-        }
+        };
+        packets
     }
 
     /// Takes an encrypted packet and returns one (eventually more or
@@ -214,26 +222,79 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     /// further action safely. However, it would be a good style to log
     /// them in your application's DEBUG logs.
     pub fn unwrap_message(&mut self, packet: Vec<u8>) -> Result<Vec<Vec<u8>>, AuthFailure> {
-        match self.session.state {
-            SessionState::UninitializedUnknownPeer => {
-                panic!("A Wrapper's Session state should never be UninitializedUnknownPeer.")
+        let (packet, packet_type) = if packet.len() < 120 {
+            // Cannot be a handshake packet
+            // This case disjunction is useless in theory, but it
+            // avoids having a temporary HandshakePacket object
+            // that is broken (eg. panics if printed)
+            (packet, Err(0))
+        }
+        else {
+            // May be a handshake packet
+            let handshake_packet = HandshakePacket { raw: packet };
+            let packet_type = handshake_packet.packet_type();
+            let packet = handshake_packet.raw;
+            (packet, packet_type)
+        };
+        match packet_type {
+            Err(packet_first_four_bytes) => {
+                // Not a handshake packet
+                handshake::finalize(&mut self.session);
+                match self.session.state {
+                    SessionState::UninitializedUnknownPeer |
+                    SessionState::UninitializedKnownPeer |
+                    SessionState::SentHello { .. } |
+                    SessionState::ReceivedHello { .. } => {
+                        if packet_first_four_bytes == 0 {
+                            Err(AuthFailure::PacketTooShort(format!("Size: {}, but I am in state {:?}", packet.len(), self.session.state)))
+                        }
+                        else {
+                            Err(AuthFailure::UnexpectedPacket(format!("Received a non-handshake packet while doing handshake (first four bytes: {:?}u32)", packet_first_four_bytes)))
+                        }
+                    },
+                    SessionState::SentKey { ref shared_secret_key, .. } |
+                    SessionState::Established { ref shared_secret_key, .. } => {
+                        Ok(vec![try!(connection::open_packet(
+                                &mut self.session.their_nonce_offset,
+                                &mut self.session.their_nonce_bitfield,
+                                &shared_secret_key,
+                                &packet))])
+                    },
+                }
             },
-            SessionState::UninitializedKnownPeer |
-            SessionState::SentHello { .. } |
-            SessionState::ReceivedHello { .. } |
-            SessionState::SentKey { .. } => {
-                let (peer_id, msg) = try!(handshake::parse_handshake_packet(
+            Ok(HandshakePacketType::Hello) | Ok(HandshakePacketType::RepeatHello) => {
+                let (peer_id, msg) = try!(handshake::parse_hello_packet(
                         &mut self.session, &self.password_store, &HandshakePacket { raw: packet }));
-                let peer_id = peer_id.unwrap(); // Session state is not SentHello, Peer can't be None.
                 self.peer_id = peer_id.clone();
-                Ok(vec![msg])
-            },
-            SessionState::Established { ref shared_secret_key, .. } => {
-                Ok(vec![try!(connection::open_packet(
-                        &mut self.session.their_nonce_offset,
-                        &mut self.session.their_nonce_bitfield,
-                        &shared_secret_key,
-                        &packet))])
+                if msg.len() == 0 {
+                    Ok(Vec::new())
+                }
+                else {
+                    Ok(vec![msg])
+                }
+            }
+            Ok(HandshakePacketType::Key) | Ok(HandshakePacketType::RepeatKey) => {
+                match self.session.state.clone() { // TODO: do not clone
+                    SessionState::UninitializedUnknownPeer |
+                    SessionState::UninitializedKnownPeer |
+                    SessionState::ReceivedHello { .. } => {
+                        Err(AuthFailure::UnexpectedPacket("Received a key packet while expecting a hello.".to_owned()))
+                    },
+                    SessionState::SentKey { .. } |
+                    SessionState::Established { .. } => {
+                        Err(AuthFailure::UnexpectedPacket("Received a key packet while expecting a data packet.".to_owned()))
+                    },
+                    SessionState::SentHello { .. } => {
+                        let msg = try!(handshake::parse_key_packet(
+                                &mut self.session, &HandshakePacket { raw: packet }));
+                        if msg.len() == 0 {
+                            Ok(Vec::new())
+                        }
+                        else {
+                            Ok(vec![msg])
+                        }
+                    },
+                }
             },
         }
     }
@@ -246,9 +307,40 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     ///
     /// This function should be called from time to time if no message
     /// was wrapped or unwrapped.
-    pub fn upkeep(&self) -> Vec<Vec<u8>> {
-        // TODO: repeat hello / repeat key
-        vec![]
+    pub fn upkeep(&mut self) -> Vec<Vec<u8>> {
+        match self.session.state {
+            SessionState::UninitializedUnknownPeer => {
+                panic!("A Wrapper's Session state should never be UninitializedUnknownPeer.")
+            },
+            SessionState::UninitializedKnownPeer |
+            SessionState::SentHello { .. } |
+            SessionState::ReceivedHello { .. } |
+            SessionState::SentKey { .. } => {
+                let packet = handshake::create_next_handshake_packet(&mut self.session, &self.my_credentials, &vec![]).raw;
+                vec![packet]
+            },
+            SessionState::Established { .. } => {
+                vec![]
+            },
+        }
+    }
+
+    /// Returns the state of the connection.
+    pub fn connection_state(&self) -> ConnectionState {
+        match self.session.state {
+            SessionState::UninitializedUnknownPeer |
+            SessionState::UninitializedKnownPeer => {
+                ConnectionState::Uninitialized
+            },
+            SessionState::SentHello { .. } |
+            SessionState::ReceivedHello { .. } |
+            SessionState::SentKey { .. } => {
+                ConnectionState::Handshake
+            },
+            SessionState::Established { .. } => {
+                ConnectionState::Established
+            },
+        }
     }
 
     /// Returns the public key of the other peer.

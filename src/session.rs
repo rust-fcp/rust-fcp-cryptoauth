@@ -32,8 +32,8 @@ pub struct Session {
     pub my_temp_pk: crypto_box::PublicKey,
     pub my_temp_sk: crypto_box::SecretKey,
 
-    pub my_last_nonce: u64, // Actually, 24 bytes. But arithmetic operations on u64 are easier.
-    pub their_nonce_offset: u64, // Same comment
+    pub my_last_nonce: u32,
+    pub their_nonce_offset: u32,
     pub their_nonce_bitfield: u64,
 }
 
@@ -61,8 +61,8 @@ impl Session {
             my_temp_pk: my_temp_pk,
             my_temp_sk: my_temp_sk,
 
-            my_last_nonce: 4u64,
-            their_nonce_offset: 4u64,
+            my_last_nonce: 3u32,
+            their_nonce_offset: 4u32,
             their_nonce_bitfield: 0u64,
         }
     }

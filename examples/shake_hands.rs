@@ -7,7 +7,7 @@ use rust_sodium::crypto::box_::curve25519xsalsa20poly1305::{PublicKey,SecretKey}
 
 use hex::ToHex;
 
-use fcp_cryptoauth::authentication::AuthChallenge;
+use fcp_cryptoauth::authentication::Credentials;
 use fcp_cryptoauth::session::{Session, SessionState};
 use fcp_cryptoauth::keys::{FromBase32, FromHex};
 use fcp_cryptoauth::handshake::{create_next_handshake_packet, parse_handshake_packet};
@@ -27,7 +27,7 @@ pub fn main() {
     let mut store = PasswordStore::new();
     store.add_peer(Some(&login), password.clone(), "my friend");
 
-    let challenge = AuthChallenge::LoginPassword { login: login, password: password };
+    let challenge = Credentials::LoginPassword { login: login, password: password };
     let initial_state = SessionState::UninitializedKnownPeer;
     let mut session = Session::new(my_pk, my_sk, their_pk, initial_state);
 

@@ -31,7 +31,7 @@ pub fn shared_secret_from_keys(my_temp_sk: &crypto_box::SecretKey, their_perm_pk
 /// data, unencrypted.
 pub fn open_packet_end(packet_end: &[u8], shared_secret: &crypto_box::PrecomputedKey, nonce: &crypto_box::Nonce) -> Result<(crypto_box::PublicKey, Vec<u8>), AuthFailure> {
     if packet_end.len() < crypto_box::MACBYTES {
-        return Err(AuthFailure::PacketTooShort)
+        return Err(AuthFailure::PacketTooShort(format!("Packet end: {}", packet_end.len())))
     }
     match crypto_box::open_precomputed(packet_end, nonce, &shared_secret) {
         Err(_) => Err(AuthFailure::CorruptedPacket),

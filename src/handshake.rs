@@ -1,7 +1,7 @@
 //! Creates and reads CryptoAuth Hello packets
 use cryptography::{crypto_box, open_packet_end, shared_secret_from_password, shared_secret_from_keys};
 use cryptography::crypto_box::{PublicKey, PrecomputedKey, Nonce};
-use authentication::AuthChallenge;
+use authentication::{Credentials, ToAuthChallenge};
 use auth_failure::AuthFailure;
 use session::{Session, SessionState};
 use handshake_packet::{HandshakePacket, HandshakePacketBuilder, HandshakePacketType};
@@ -14,7 +14,7 @@ use passwords::PasswordStore;
 ///
 /// ```
 /// use fcp_cryptoauth::cryptography::crypto_box::{gen_keypair, PublicKey};
-/// use fcp_cryptoauth::authentication::AuthChallenge;
+/// use fcp_cryptoauth::authentication::Credentials;
 /// use fcp_cryptoauth::session::{Session, SessionState};
 /// use fcp_cryptoauth::keys::FromBase32;
 /// use fcp_cryptoauth::handshake::create_next_handshake_packet;
@@ -26,13 +26,13 @@ use passwords::PasswordStore;
 ///
 /// let login = "foo".to_owned().into_bytes();
 /// let password = "bar".to_owned().into_bytes();
-/// let challenge = AuthChallenge::LoginPassword { login: login, password: password };
+/// let challenge = Credentials::LoginPassword { login: login, password: password };
 ///
 /// let hello = create_next_handshake_packet(&mut session, &challenge, &vec![]);
 /// let bytes = hello.raw;
 /// println!("{:?}", bytes);
 /// ```
-pub fn create_next_handshake_packet(session: &mut Session, challenge: &AuthChallenge, data: &[u8]) -> HandshakePacket {
+pub fn create_next_handshake_packet(session: &mut Session, challenge: &Credentials, data: &[u8]) -> HandshakePacket {
     match session.state.clone() { // TODO: do not clone
         SessionState::UninitializedUnknownPeer => {
             panic!("Trying to send a packet to a totally unknown peer. We need at least a Challenge or a PasswordStore to do that.")
@@ -82,7 +82,7 @@ pub fn create_next_handshake_packet(session: &mut Session, challenge: &AuthChall
 fn create_hello(
         session: &Session,
         nonce: &crypto_box::Nonce,
-        challenge: &AuthChallenge,
+        credentials: &Credentials,
         repeat: bool,
         data: &[u8],
         ) -> HandshakePacket {
@@ -94,13 +94,13 @@ fn create_hello(
         HandshakePacketType::Hello
     };
 
-    let shared_secret_key = challenge.make_shared_secret_key(session);
+    let shared_secret_key = credentials.make_shared_secret_key(session);
     let (msg_auth_code, my_encrypted_temp_pk, encrypted_data) =
             create_msg_end(session, nonce, &shared_secret_key, data);
 
     let packet = HandshakePacketBuilder::new()
             .packet_type(&packet_type)
-            .auth_challenge(&challenge.to_bytes(session))
+            .auth_challenge(&credentials.to_auth_challenge_bytes(session))
             .random_nonce(&nonce.0)
             .sender_perm_pub_key(&session.my_perm_pk.0)
             .msg_auth_code(&msg_auth_code)
@@ -131,7 +131,7 @@ fn create_key(
 
     let packet = HandshakePacketBuilder::new()
             .packet_type(&packet_type)
-            .auth_challenge(&AuthChallenge::None.to_bytes(session))
+            .auth_challenge(&Credentials::None.to_auth_challenge_bytes(session))
             .random_nonce(&nonce.0)
             .sender_perm_pub_key(&session.my_perm_pk.0)
             .msg_auth_code(&msg_auth_code)
@@ -285,7 +285,7 @@ pub fn parse_key_packet(
                     Err(AuthFailure::CorruptedPacket)},
             }
         },
-        _ => Err(AuthFailure::UnexpectedPacket),
+        _ => Err(AuthFailure::UnexpectedPacket(format!("Got a key packet in session state {:?}", session.state))),
     }
 }
 
@@ -422,6 +422,21 @@ fn authenticate_packet_author<'a, Peer: Clone>(
         }
     };
     Err(AuthFailure::InvalidCredentials)
+}
+
+/// Should be called when the first (authenticated) non-handshake packet arrives.
+/// Otherwise, this is a no-op.
+pub fn finalize(session: &mut Session) {
+    match session.state {
+        SessionState::SentKey { their_temp_pk, .. } => {
+            session.state = SessionState::Established {
+                their_temp_pk: their_temp_pk,
+                shared_secret_key: shared_secret_from_keys(
+                        &session.my_temp_sk, &their_temp_pk),
+                };
+        },
+        _ => {},
+    }
 }
 
 #[test]

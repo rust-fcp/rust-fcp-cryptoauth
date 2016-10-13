@@ -81,7 +81,7 @@ fn decode_base32(encoded: &[u8]) -> Result<Vec<u8>, u8> {
 #[test]
 fn test_decode_base32() {
     assert_eq!(decode_base32(b"4321"), Ok(vec![0x64, 0x88]));
-    decode_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050");
+    decode_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050").unwrap();
 }
 
 impl FromBase32 for crypto_box::PublicKey {

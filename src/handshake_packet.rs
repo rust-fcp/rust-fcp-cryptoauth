@@ -64,6 +64,7 @@ use handshake_packet::byteorder::ByteOrder;
 #[derive(Eq)]
 #[derive(PartialEq)]
 #[derive(Debug)]
+#[derive(Clone)]
 pub enum HandshakePacketType {
     Hello,       // 0u32
     RepeatHello, // 1u32

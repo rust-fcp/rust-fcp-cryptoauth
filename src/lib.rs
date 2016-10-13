@@ -14,6 +14,11 @@ pub mod connection;
 
 pub mod wrapper;
 
+/// Initializes fcp_cryptoauth. Must be called before any
+/// feature is used.
+///
+/// Actually, its only purpose is to initialize the cryptographic
+/// library.
 pub fn init() {
     rust_sodium::init();
 }
