@@ -30,7 +30,6 @@ use passwords::PasswordStore;
 ///
 /// let hello = create_next_handshake_packet(&mut session, &challenge, &vec![]).unwrap();
 /// let bytes = hello.raw;
-/// println!("{:?}", bytes);
 /// ```
 pub fn create_next_handshake_packet(session: &mut Session, challenge: &Credentials, data: &[u8]) -> Option<HandshakePacket> {
     match session.state.clone() { // TODO: do not clone
@@ -148,11 +147,6 @@ fn create_key(
 /// of a packet.
 fn create_msg_end(session: &Session, nonce: &Nonce, shared_secret_key: &PrecomputedKey, data: &[u8])
         -> ([u8; crypto_box::MACBYTES], [u8; crypto_box::PUBLICKEYBYTES], Vec<u8>) {
-    use hex::ToHex;
-    println!("Encrypting temp pk {} with nonce {} and secret {}",
-            session.my_temp_pk.0.to_vec().to_hex(),
-            nonce.0.to_vec().to_hex(),
-            shared_secret_key.0.to_vec().to_hex());
     // This part is a bit tricky. Hold on tight.
 
     let mut buf = Vec::with_capacity(crypto_box::PUBLICKEYBYTES+data.len());
@@ -274,9 +268,6 @@ pub fn parse_key_packet(
             // shared secret.
             use hex::ToHex;
             let nonce = crypto_box::Nonce::from_slice(&packet.random_nonce()).unwrap();
-            println!("Decrypting with nonce {} and shared_sk {}",
-                    nonce.0.to_vec().to_hex(),
-                    shared_secret_key.0.to_vec().to_hex());
             match open_packet_end(packet.sealed_data(), &shared_secret_key, &nonce) {
                 Ok((their_temp_pk, data)) => {
                     // authentication succeeded
@@ -285,7 +276,6 @@ pub fn parse_key_packet(
                     Ok(data)
                 }
                 Err(_) => {
-                    println!("foo");
                     Err(AuthFailure::CorruptedPacket)},
             }
         },
@@ -305,8 +295,6 @@ fn update_session_state_on_received_hello(
     assert!(packet.packet_type() == Ok(HandshakePacketType::Hello) ||
             packet.packet_type() == Ok(HandshakePacketType::RepeatHello));
     use hex::ToHex;
-    println!("My perm pk: {}", session.my_perm_pk.0.to_vec().to_hex());
-    println!("My temp pk: {}", session.my_temp_pk.0.to_vec().to_hex());
     match session.state.clone() { // TODO: do not clone
         SessionState::SentHello { handshake_nonce, shared_secret_key } => {
             // We both sent a hello. Break the tie by making the

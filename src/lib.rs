@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 extern crate hex;
 extern crate byteorder;
 extern crate rust_sodium;
