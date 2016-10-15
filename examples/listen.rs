@@ -75,22 +75,24 @@ pub fn main() {
         println!("Received message: {}", message.to_hex());
     }
 
-    println!("4");
+    for i in 4.. {
+        println!("{}", i);
 
-    for packet in conn.upkeep() {
-        sock.send_to(&packet, dest).unwrap();
-    }
-    for packet in conn.wrap_message(b"hello!") {
-        sock.send_to(&packet, dest).unwrap();
-    }
+        for packet in conn.upkeep() {
+            sock.send_to(&packet, dest).unwrap();
+        }
+        for packet in conn.wrap_message(b"hello!") {
+            sock.send_to(&packet, dest).unwrap();
+        }
 
-    let mut buf = vec![0u8; 1024];
-    let (nb_bytes, _addr) = sock.recv_from(&mut buf).unwrap();
-    assert!(nb_bytes < 1024);
-    buf.truncate(nb_bytes);
-    println!("Received packet: {}", buf.to_hex());
-    for message in conn.unwrap_message(buf).unwrap() {
-        println!("Received message: {}", message.to_hex());
+        let mut buf = vec![0u8; 1024];
+        let (nb_bytes, _addr) = sock.recv_from(&mut buf).unwrap();
+        assert!(nb_bytes < 1024);
+        buf.truncate(nb_bytes);
+        println!("Received packet: {}", buf.to_hex());
+        for message in conn.unwrap_message(buf).unwrap() {
+            println!("Received message: {}", message.to_hex());
+        }
     }
 }
 
