@@ -11,7 +11,7 @@ pub enum AuthFailure {
     /// An incoming peer tried to connect with None auth.
     AuthNone,
     /// An incoming peer tried to connect with credentials unknown to us.
-    InvalidCredentials,
+    InvalidCredentials(String),
     /// A peer used a public key different than expected.
     WrongPublicKey,
     /// The packet type does not match the session state.

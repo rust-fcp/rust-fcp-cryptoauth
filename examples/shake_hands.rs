@@ -78,6 +78,7 @@ pub fn main() {
         buf.truncate(nb_bytes);
         let packet = HandshakePacket { raw: buf };
         assert_eq!(packet.packet_type(), Err(4));
+        let buf = packet.raw;
     }
     
 }

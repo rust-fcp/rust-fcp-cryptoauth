@@ -391,7 +391,14 @@ fn authenticate_packet_author<'a, Peer: Clone>(
     };
     let candidates = match candidates_opt {
         Some(candidates) => candidates,
-        None => return Err(AuthFailure::InvalidCredentials),
+        None => {
+            let err_msg = match packet.auth_challenge()[0] {
+                0x01 => "No candidate peer for password-only authorization.",
+                0x02 => "No candidate peer for login-password authorization.",
+                _ => panic!("The impossible happened."),
+            };
+            return Err(AuthFailure::InvalidCredentials(err_msg.to_owned()))
+        },
     };
 
     let their_perm_pk = crypto_box::PublicKey::from_slice(&packet.sender_perm_pub_key()).unwrap();
@@ -414,7 +421,12 @@ fn authenticate_packet_author<'a, Peer: Clone>(
             }
         }
     };
-    Err(AuthFailure::InvalidCredentials)
+    let err_msg = match packet.auth_challenge()[0] {
+        0x01 => "Could not open packet using password-only authorization.",
+        0x02 => "Could not open packet using login-password authorization.",
+        _ => panic!("The impossible happened."),
+    };
+    return Err(AuthFailure::InvalidCredentials(err_msg.to_owned()))
 }
 
 /// Should be called when the first (authenticated) non-handshake packet arrives.
