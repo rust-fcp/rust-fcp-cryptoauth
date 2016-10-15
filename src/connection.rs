@@ -48,9 +48,8 @@ pub fn open_packet(
     packet_nonce.copy_from_slice(&packet[0..4]);
     let packet_end = &packet[4..];
 
-    use hex::ToHex;
     match crypto_box::open_precomputed(packet_end, &nonce, shared_secret_key) {
-        Err(e) => {
+        Err(()) => {
             Err(AuthFailure::CorruptedPacket)
         },
         Ok(msg) => {
@@ -72,7 +71,7 @@ pub fn seal_message(
 
     let mut packet = vec![0u8; 4];
     BigEndian::write_u32(&mut packet, *my_last_nonce);
-    use hex::ToHex;
     packet.extend(crypto_box::seal_precomputed(message, &nonce, shared_secret_key));
+
     packet
 }

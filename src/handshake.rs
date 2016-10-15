@@ -266,7 +266,6 @@ pub fn parse_key_packet(
             // Obviously, only allow key packets if we sent an hello.
             // Also make sure the packet is authenticated with the
             // shared secret.
-            use hex::ToHex;
             let nonce = crypto_box::Nonce::from_slice(&packet.random_nonce()).unwrap();
             match open_packet_end(packet.sealed_data(), &shared_secret_key, &nonce) {
                 Ok((their_temp_pk, data)) => {
@@ -294,16 +293,15 @@ fn update_session_state_on_received_hello(
     // have to read this, but we have to do it at some point.
     assert!(packet.packet_type() == Ok(HandshakePacketType::Hello) ||
             packet.packet_type() == Ok(HandshakePacketType::RepeatHello));
-    use hex::ToHex;
     match session.state.clone() { // TODO: do not clone
-        SessionState::SentHello { handshake_nonce, shared_secret_key } => {
+        SessionState::SentHello { shared_secret_key, .. } => {
             // We both sent a hello. Break the tie by making the
             // one with the lower key win.
             if session.my_perm_pk < session.their_perm_pk {
                 // I win. Keep my hello.
                 SessionState::WaitingKey {
                     their_temp_pk: their_temp_pk,
-                    handshake_nonce: nonce, // XXX: should we use the other peer's nonce?
+                    handshake_nonce: nonce,
                     shared_secret_key: shared_secret_key,
                     }
             }
