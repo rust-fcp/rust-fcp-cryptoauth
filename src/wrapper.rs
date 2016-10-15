@@ -161,15 +161,20 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     /// to `wrap_message` / `wrap_message_immediately` made before
     /// the handshake is finished).
     pub fn wrap_message(&mut self, msg: &[u8]) -> Vec<Vec<u8>> {
-        // TODO: reininitialize the nonce if needed
         let mut packets = self.upkeep();
         match self.session.state {
             SessionState::Established { ref shared_secret_key, .. } => {
                 packets.push(connection::seal_message(
                         &mut self.session.my_last_nonce, shared_secret_key, msg))
+
             }
             _ => {} // forward-secrecy not yet available.
         };
+        if self.session.my_last_nonce >= 0xfffffff0 {
+            // Little nonce space left
+            self.session.reset();
+            packets.append(&mut self.upkeep());
+        }
         packets
     }
 
@@ -183,7 +188,6 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     /// it is passed to the first call of `wrap_message_immediately`
     /// of the session and `wrap_message` has never been called before.
     pub fn wrap_message_immediately(&mut self, msg: &[u8]) -> Vec<Vec<u8>> {
-        // TODO: reininitialize the nonce if needed
         let mut packets = self.upkeep();
         match self.session.state {
             SessionState::UninitializedUnknownPeer => {
@@ -201,8 +205,14 @@ impl<PeerId: Clone> Wrapper<PeerId> {
             SessionState::Established { ref shared_secret_key, .. } => {
                 packets.push(connection::seal_message(
                         &mut self.session.my_last_nonce, &shared_secret_key, msg))
+
             },
         };
+        if self.session.my_last_nonce >= 0xfffffff0 {
+            // Little nonce space left
+            self.session.reset();
+            packets.append(&mut self.upkeep());
+        }
         packets
     }
 
