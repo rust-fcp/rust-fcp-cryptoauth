@@ -356,6 +356,7 @@ fn update_session_state_on_received_key(
                 their_temp_pk: their_temp_pk,
                 shared_secret_key: shared_secret_from_keys(
                         &session.my_temp_sk, &their_temp_pk),
+                initiator_is_me: true,
                 }
         },
         SessionState::UninitializedUnknownPeer |
@@ -438,6 +439,7 @@ pub fn finalize(session: &mut Session) {
                 their_temp_pk: their_temp_pk,
                 shared_secret_key: shared_secret_from_keys(
                         &session.my_temp_sk, &their_temp_pk),
+                initiator_is_me: false,
                 };
         },
         _ => {},

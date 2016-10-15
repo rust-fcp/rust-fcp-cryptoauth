@@ -163,9 +163,9 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     pub fn wrap_message(&mut self, msg: &[u8]) -> Vec<Vec<u8>> {
         let mut packets = self.upkeep();
         match self.session.state {
-            SessionState::Established { ref shared_secret_key, .. } => {
+            SessionState::Established { ref shared_secret_key, ref initiator_is_me, .. } => {
                 packets.push(connection::seal_message(
-                        &mut self.session.my_last_nonce, shared_secret_key, msg))
+                        &mut self.session.my_last_nonce, shared_secret_key, *initiator_is_me, msg))
 
             }
             _ => {} // forward-secrecy not yet available.
@@ -202,9 +202,9 @@ impl<PeerId: Clone> Wrapper<PeerId> {
                     packets.push(packet.raw);
                 }
             },
-            SessionState::Established { ref shared_secret_key, .. } => {
+            SessionState::Established { ref shared_secret_key, ref initiator_is_me, .. } => {
                 packets.push(connection::seal_message(
-                        &mut self.session.my_last_nonce, &shared_secret_key, msg))
+                        &mut self.session.my_last_nonce, &shared_secret_key, *initiator_is_me, msg))
 
             },
         };
@@ -266,12 +266,21 @@ impl<PeerId: Clone> Wrapper<PeerId> {
                             Err(AuthFailure::UnexpectedPacket(format!("Received a non-handshake packet while doing handshake (first four bytes: {:?}u32)", packet_first_four_bytes)))
                         }
                     },
-                    SessionState::SentKey { ref shared_secret_key, .. } |
-                    SessionState::Established { ref shared_secret_key, .. } => {
+                    SessionState::SentKey { ref shared_secret_key, .. } => {
+                        // TODO: factorize with Established
                         Ok(vec![try!(connection::open_packet(
                                 &mut self.session.their_nonce_offset,
                                 &mut self.session.their_nonce_bitfield,
                                 &shared_secret_key,
+                                false,
+                                &packet))])
+                    },
+                    SessionState::Established { ref shared_secret_key, ref initiator_is_me, .. } => {
+                        Ok(vec![try!(connection::open_packet(
+                                &mut self.session.their_nonce_offset,
+                                &mut self.session.their_nonce_bitfield,
+                                &shared_secret_key,
+                                *initiator_is_me,
                                 &packet))])
                     },
                 }
