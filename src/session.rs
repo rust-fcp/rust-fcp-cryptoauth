@@ -34,7 +34,7 @@ pub struct Session {
     pub my_temp_sk: crypto_box::SecretKey,
 
     pub my_last_nonce: u32,
-    pub their_nonce_offset: u32,
+    pub their_nonce_offset: u32, // their last nonce
     pub their_nonce_bitfield: u64,
 }
 

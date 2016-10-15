@@ -10,27 +10,32 @@ use auth_failure::AuthFailure;
 /// with 64 bits instead of 32.
 fn check_packet_nonce(their_nonce_offset: &mut u32, their_nonce_bitfield: &mut u64, packet_nonce: &[u8; 4]) -> Result<(), AuthFailure> {
     let packet_nonce = BigEndian::read_u32(packet_nonce);
-    if packet_nonce < *their_nonce_offset {
-        return Err(AuthFailure::LatePacket)
+    if packet_nonce + 64 <= *their_nonce_offset {
+        // Very late packet.
+        Err(AuthFailure::LatePacket)
     }
-    let ahead: u32 = packet_nonce - *their_nonce_offset;
-    if ahead <= 64 {
-        let mask = 1u64 << ahead; // The bit corresponding to this nonce (=packet id) in the bitfield.
+    else if packet_nonce <= *their_nonce_offset {
+        // A bit late packet. Let's make sure we did not already receive it.
+        let shift: u32 = *their_nonce_offset - packet_nonce;
+        let mask = 1u64 << shift; // The bit corresponding to this nonce (=packet id) in the bitfield.
         if (mask & *their_nonce_bitfield) == 0 {
             // We have never seen this packet so far.
             *their_nonce_bitfield |= mask; // Remember we got it
+            Ok(())
         }
         else {
             return Err(AuthFailure::Replay)
         }
     }
     else {
-        let slide_window_by = ahead - 64; // Always > 0 in this branch
-        *their_nonce_offset += slide_window_by;
-        *their_nonce_bitfield <<= slide_window_by;
+        // Packet newer than every other one so far. Slide the window.
+        let ahead: u32 = packet_nonce - *their_nonce_offset;
+        *their_nonce_offset += ahead;
+        assert_eq!(*their_nonce_offset, packet_nonce);
+        *their_nonce_bitfield = their_nonce_bitfield.wrapping_shl(ahead);
         *their_nonce_bitfield |= 1;
+        Ok(())
     }
-    Ok(())
 }
 
 pub fn open_packet(
