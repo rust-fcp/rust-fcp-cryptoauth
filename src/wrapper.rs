@@ -188,7 +188,7 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     /// it is passed to the first call of `wrap_message_immediately`
     /// of the session and `wrap_message` has never been called before.
     pub fn wrap_message_immediately(&mut self, msg: &[u8]) -> Vec<Vec<u8>> {
-        let mut packets = self.upkeep();
+        let mut packets = Vec::new();
         match self.session.state {
             SessionState::UninitializedUnknownPeer => {
                 panic!("A Wrapper's Session state should never be UninitializedUnknownPeer.")
