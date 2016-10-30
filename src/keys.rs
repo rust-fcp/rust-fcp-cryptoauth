@@ -46,7 +46,7 @@ const BASE32_DECODING_TABLE: [u8; 128] = [
         99,99,10,11,12,99,13,14,15,99,16,17,18,19,20,99,
         21,22,23,24,25,26,27,28,29,30,31,99,99,99,99,99
         ];
-fn decode_base32(encoded: &[u8]) -> Result<Vec<u8>, u8> {
+pub fn decode_base32(encoded: &[u8]) -> Result<Vec<u8>, u8> {
     let mut res = Vec::with_capacity(encoded.len()*5/8);
     let mut last_word_length = 0;
     let mut last_word = 0u16;
