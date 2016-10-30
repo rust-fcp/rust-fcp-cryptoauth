@@ -21,8 +21,10 @@ pub fn shared_secret_from_password(password: &[u8], my_perm_sk: &crypto_box::Sec
     sha256::hash(&shared_secret_preimage).0
 }
 
-pub fn shared_secret_from_keys(my_temp_sk: &crypto_box::SecretKey, their_perm_pk: &crypto_box::PublicKey) -> crypto_box::PrecomputedKey {
-    crypto_box::precompute(their_perm_pk, my_temp_sk)
+/// my_sk: for Key packet, it's the perm sk, and for data packets it's the
+/// temp sk.
+pub fn shared_secret_from_keys(my_sk: &crypto_box::SecretKey, their_temp_pk: &crypto_box::PublicKey) -> crypto_box::PrecomputedKey {
+    crypto_box::precompute(their_temp_pk, my_sk)
 }
 
 /// unseals the concatenation of fields msg_auth_code, sender_encrypted_temp_pk, and
