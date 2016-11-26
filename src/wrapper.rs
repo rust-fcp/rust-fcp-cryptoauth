@@ -58,8 +58,8 @@ pub enum ConnectionState {
 /// make it use all the memory on the system.
 pub struct Wrapper<PeerId: Clone> {
     my_credentials: Credentials,
-    password_store: PasswordStore<PeerId>,
-    peer_id: PeerId,
+    password_store: Option<PasswordStore<PeerId>>,
+    peer_id: Option<PeerId>,
     session: Session,
 }
 
@@ -70,8 +70,10 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     /// to the other peer.
     ///
     /// `allowed_peers` has the same function as for
-    /// `new_incoming_connection` and will be used if we have to reset
+    /// `new_incoming_connection` and may be used if the other peer resets
     /// the connection.
+    /// If set to None, no authentication will be required for incoming
+    /// peers.
     ///
     /// `peer_id` is an arbitrary value opaque to `fcp_cryptoauth`,
     /// used by the calling library to identify the peer.
@@ -85,17 +87,26 @@ impl<PeerId: Clone> Wrapper<PeerId> {
             peer_id: PeerId,
             ) -> Wrapper<PeerId> {
 
-        let password_store = match allowed_peers {
-            Some(allowed_peers) => hashmap_to_password_store(allowed_peers),
-            None => PasswordStore::new(),
-        };
+        let password_store = allowed_peers.map(hashmap_to_password_store);
+
         Wrapper {
             my_credentials: my_credentials,
             password_store: password_store,
-            peer_id: peer_id,
+            peer_id: Some(peer_id),
             session: Session::new(my_pk, my_sk, their_pk, SessionState::UninitializedKnownPeer),
         }
     }
+
+    fn parse_hello(session: &mut Session, password_store: &Option<PasswordStore<PeerId>>, packet: &HandshakePacket) -> Result<(Option<PeerId>, Vec<u8>), AuthFailure> {
+        match *password_store {
+            Some(ref password_store) => {
+                 let (peer_id, data) = try!(handshake::parse_hello_packet(session, password_store, &packet));
+                 Ok((Some(peer_id.clone()), data))
+            },
+            None => Ok((None, try!(handshake::parse_authnone_hello_packet(session, &packet)))),
+        }
+    }
+
 
     /// Creates a new `Wrapper` for a connection initiated by the peer.
     ///
@@ -106,6 +117,8 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     /// to use to identicate.
     /// Once a peer used one of these credentials, the associated value
     /// is used as its peer id so we know who this is.
+    /// If set to None, no authentication will be required for incoming
+    /// peers.
     ///
     /// Returns `Err` if and only if the message is not a well-formed
     /// Hello packet or the peer is not in the `allowed_peers`.
@@ -113,7 +126,7 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     pub fn new_incoming_connection(
             my_pk: PublicKey, my_sk: SecretKey,
             my_credentials: Credentials,
-            allowed_peers: HashMap<Credentials, PeerId>,
+            allowed_peers: Option<HashMap<Credentials, PeerId>>,
             packet: Vec<u8>,
             ) -> Result<(Wrapper<PeerId>, Vec<u8>), AuthFailure> {
 
@@ -124,16 +137,15 @@ impl<PeerId: Clone> Wrapper<PeerId> {
             _ => return Err(AuthFailure::UnexpectedPacket(format!("Incoming connection started with a non-Hello packet ({:?}).", packet.packet_type()))),
         }
 
-        let password_store = hashmap_to_password_store(allowed_peers);
+        let password_store = allowed_peers.map(hashmap_to_password_store);
         let their_pk = match handshake::pre_parse_hello_packet(&packet) {
             Some(their_pk) => their_pk,
             None => panic!("pre_parse_hello_packet should not return None on Hello packets.'"),
         };
         let mut session = Session::new(
                 my_pk, my_sk, their_pk, SessionState::UninitializedUnknownPeer);
-        let (peer_id, data) = try!(handshake::parse_hello_packet(
-                &mut session, &password_store, &packet));
-        let peer_id = peer_id.clone();
+
+        let (peer_id, data) = try!(Wrapper::parse_hello(&mut session, &password_store, &packet));
 
         let wrapper = Wrapper {
             my_credentials: my_credentials,
@@ -286,7 +298,7 @@ impl<PeerId: Clone> Wrapper<PeerId> {
                 }
             },
             Ok(HandshakePacketType::Hello) | Ok(HandshakePacketType::RepeatHello) => {
-                let (peer_id, msg) = try!(handshake::parse_hello_packet(
+                let (peer_id, msg) = try!(Wrapper::parse_hello(
                         &mut self.session, &self.password_store, &HandshakePacket { raw: packet }));
                 self.peer_id = peer_id.clone();
                 if msg.len() == 0 {
@@ -379,7 +391,7 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     }
 
     /// Returns the peer id of the other peer.
-    pub fn peer_id(&self) -> &PeerId {
+    pub fn peer_id(&self) -> &Option<PeerId> {
         &self.peer_id
     }
 }

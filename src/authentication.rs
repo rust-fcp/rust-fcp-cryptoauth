@@ -64,7 +64,7 @@ use rust_sodium::randombytes::randombytes;
 use session::Session;
 use cryptography::crypto_box::PrecomputedKey;
 use cryptography::sha256;
-use cryptography::{shared_secret_from_password, PASSWORD_DIGEST_BYTES};
+use cryptography::{shared_secret_from_keys, shared_secret_from_password};
 
 /// Used for specifying authorization credentials of a peer,
 /// either oneself or an incoming peer.
@@ -119,9 +119,9 @@ pub enum Credentials {
 
 pub trait ToAuthChallenge {
     fn to_auth_challenge_bytes(&self, session: &Session) -> [u8; 12];
-    fn make_shared_secret(&self, session: &Session) -> [u8; PASSWORD_DIGEST_BYTES];
+    fn make_shared_secret(&self, session: &Session) -> PrecomputedKey;
     fn make_shared_secret_key(&self, session: &Session) -> PrecomputedKey {
-        PrecomputedKey::from_slice(&self.make_shared_secret(session)).unwrap()
+        self.make_shared_secret(session)
     }
 }
 
@@ -164,9 +164,11 @@ impl ToAuthChallenge for Credentials {
         }
     }
 
-    fn make_shared_secret(&self, session: &Session) -> [u8; PASSWORD_DIGEST_BYTES] {
+    fn make_shared_secret(&self, session: &Session) -> PrecomputedKey {
         match *self {
-            Credentials::None => unimplemented!(), // TODO
+            Credentials::None => {
+                shared_secret_from_keys(&session.my_perm_sk, &session.their_perm_pk)
+            },
             Credentials::Password { ref password } |
             Credentials::LoginPassword { ref password, login: _ } => {
                 shared_secret_from_password(password, &session.my_perm_sk, &session.their_perm_pk)

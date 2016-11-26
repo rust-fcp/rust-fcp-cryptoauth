@@ -9,7 +9,7 @@ pub const PASSWORD_DIGEST_BYTES: usize = sha256::DIGESTBYTES;
 
 /// Implements the fancy password hashing used by the FCP, decribed in paragraph 4
 /// of https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#hello-repeathello
-pub fn shared_secret_from_password(password: &[u8], my_perm_sk: &crypto_box::SecretKey, their_perm_pk: &crypto_box::PublicKey) -> [u8; PASSWORD_DIGEST_BYTES] {
+pub fn shared_secret_from_password(password: &[u8], my_perm_sk: &crypto_box::SecretKey, their_perm_pk: &crypto_box::PublicKey) -> crypto_box::PrecomputedKey {
     assert_eq!(scalarmult::SCALARBYTES, crypto_box::PUBLICKEYBYTES);
     assert_eq!(scalarmult::GROUPELEMENTBYTES, crypto_box::SECRETKEYBYTES);
     let product = scalarmult::scalarmult(
@@ -18,13 +18,15 @@ pub fn shared_secret_from_password(password: &[u8], my_perm_sk: &crypto_box::Sec
             );
     let mut shared_secret_preimage = product.0.to_vec();
     shared_secret_preimage.extend(&sha256::hash(password).0);
-    sha256::hash(&shared_secret_preimage).0
+    let shared_secret = sha256::hash(&shared_secret_preimage).0;
+    crypto_box::PrecomputedKey::from_slice(&shared_secret).unwrap()
 }
 
-/// my_sk: for Key packet, it's the perm sk, and for data packets it's the
-/// temp sk.
-pub fn shared_secret_from_keys(my_sk: &crypto_box::SecretKey, their_temp_pk: &crypto_box::PublicKey) -> crypto_box::PrecomputedKey {
-    crypto_box::precompute(their_temp_pk, my_sk)
+/// AuthNone Hello packets: my_sk and their_pk are permanent keys
+/// Key packets: my_sk is permanent, their_pk is temporary
+/// data packets: my_sk and their_pk are temporary keys
+pub fn shared_secret_from_keys(my_sk: &crypto_box::SecretKey, their_pk: &crypto_box::PublicKey) -> crypto_box::PrecomputedKey {
+    crypto_box::precompute(their_pk, my_sk)
 }
 
 /// unseals the concatenation of fields msg_auth_code, sender_encrypted_temp_pk, and

@@ -225,6 +225,28 @@ pub fn parse_handshake_packet<Peer: Clone>(
     }
 }
 
+/// Read a network packet without checking authentication.
+///
+/// The peer result is None only if this is a key packet.
+pub fn parse_handshake_packet_no_auth<Peer: Clone>(
+        session: &mut Session,
+        packet: &HandshakePacket,
+        ) -> Result<Vec<u8>, AuthFailure> {
+    let packet_type = match packet.packet_type() {
+        Err(_) => panic!("Non-handshake packet passed to parse_handshake_packet"),
+        Ok(packet_type) => packet_type,
+    };
+
+    match packet_type {
+        HandshakePacketType::Hello | HandshakePacketType::RepeatHello => {
+            parse_authnone_hello_packet(session, packet)
+        }
+        HandshakePacketType::Key | HandshakePacketType::RepeatKey => {
+            parse_key_packet(session, packet)
+        },
+    }
+}
+
 /// Read a network packet, assumed to be an Hello or a RepeatHello.
 pub fn parse_hello_packet<Peer: Clone>(
         session: &mut Session,
@@ -245,6 +267,34 @@ pub fn parse_hello_packet<Peer: Clone>(
     session.state = update_session_state_on_received_hello(
                     session, packet, their_temp_pk, nonce);
     Ok((peer.clone(), data))
+}
+
+/// Read a network packet, assumed to be an Hello or a RepeatHello with
+/// no authentication
+pub fn parse_authnone_hello_packet(
+        session: &mut Session,
+        packet: &HandshakePacket,
+        ) -> Result<Vec<u8>, AuthFailure> {
+
+    match packet.packet_type() {
+        Err(_) => panic!("Non-handshake packet passed to parse_authnone_hello_packet"),
+        Ok(HandshakePacketType::Hello) | Ok(HandshakePacketType::RepeatHello) => {}
+        _ => panic!("Non-hello handshake packet passed to parse_authnone_hello_packet"),
+    };
+    assert_eq!(session.their_perm_pk.0, packet.sender_perm_pub_key());
+
+    let nonce = crypto_box::Nonce::from_slice(&packet.random_nonce()).unwrap();
+    let shared_secret_key = shared_secret_from_keys(&session.my_perm_sk, &session.their_perm_pk);
+    match open_packet_end(packet.sealed_data(), &shared_secret_key, &nonce) {
+        Ok((their_temp_pk, data)) => {
+            // authentication succeeded
+            session.state = update_session_state_on_received_hello(
+                            session, packet, their_temp_pk, nonce);
+            Ok(data)
+        }
+        Err(_) => {
+            Err(AuthFailure::CorruptedPacket)},
+    }
 }
 
 /// Read a network packet, assumed to be an Key or RepeatKey
@@ -411,9 +461,8 @@ fn authenticate_packet_author<'a, Peer: Clone>(
     let nonce = crypto_box::Nonce::from_slice(&packet.random_nonce()).unwrap();
 
     for &(ref password, ref peer) in candidates {
-        let shared_secret = shared_secret_from_password(
+        let shared_secret_key = shared_secret_from_password(
                 password, &session.my_perm_sk, &their_perm_pk);
-        let shared_secret_key = PrecomputedKey::from_slice(&shared_secret).unwrap();
         match open_packet_end(packet.sealed_data(), &shared_secret_key, &nonce) {
             Ok((their_temp_pk, data)) => {
                 return Ok((their_temp_pk, nonce, peer, data))

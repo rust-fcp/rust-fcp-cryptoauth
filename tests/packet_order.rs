@@ -33,7 +33,7 @@ fn initialize() -> (Wrapper<()>, Wrapper<String>) {
     let packet = packets.remove(0);
 
     let (mut peer2, messages) = Wrapper::new_incoming_connection(
-            peer2_pk, peer2_sk, Credentials::None, peer2_allowed_credentials, packet).unwrap();
+            peer2_pk, peer2_sk, Credentials::None, Some(peer2_allowed_credentials), packet).unwrap();
     assert_eq!(messages, vec![]); // peer1 used wrap_message,there must be no piggy-backed data
     assert_eq!(peer1.connection_state(), ConnectionState::Handshake);
     assert_eq!(peer2.connection_state(), ConnectionState::Handshake);
