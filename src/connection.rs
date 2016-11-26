@@ -60,7 +60,7 @@ pub fn open_packet(
 
     match crypto_box::open_precomputed(packet_end, &nonce, shared_secret_key) {
         Err(()) => {
-            Err(AuthFailure::CorruptedPacket)
+            Err(AuthFailure::CorruptedPacket("Could not decrypt packet.".to_owned()))
         },
         Ok(msg) => {
             try!(check_packet_nonce(their_nonce_offset, their_nonce_bitfield, &packet_nonce));

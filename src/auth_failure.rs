@@ -20,7 +20,7 @@ pub enum AuthFailure {
     /// or data of size < 28)
     PacketTooShort(String),
     /// The packet had a bad format or its auth code was invalid.
-    CorruptedPacket,
+    CorruptedPacket(String),
     /// The packet's nonce is way lower than the max packet nonce
     /// (ie. difference > 64) seen so far.
     LatePacket,

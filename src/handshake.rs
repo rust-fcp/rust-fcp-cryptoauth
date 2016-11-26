@@ -293,7 +293,7 @@ pub fn parse_authnone_hello_packet(
             Ok(data)
         }
         Err(_) => {
-            Err(AuthFailure::CorruptedPacket)},
+            Err(AuthFailure::CorruptedPacket("Could not decrypt authnone Hello packet end.".to_owned()))},
     }
 }
 
@@ -325,7 +325,7 @@ pub fn parse_key_packet(
                     Ok(data)
                 }
                 Err(_) => {
-                    Err(AuthFailure::CorruptedPacket)},
+                    Err(AuthFailure::CorruptedPacket("Could not decrypt Key packet end.".to_owned()))},
             }
         },
         _ => Err(AuthFailure::UnexpectedPacket(format!("Got a key packet in session state {:?}", session.state))),

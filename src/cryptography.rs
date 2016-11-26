@@ -38,7 +38,7 @@ pub fn open_packet_end(packet_end: &[u8], shared_secret: &crypto_box::Precompute
         return Err(AuthFailure::PacketTooShort(format!("Packet end: {}", packet_end.len())))
     }
     match crypto_box::open_precomputed(packet_end, nonce, &shared_secret) {
-        Err(_) => Err(AuthFailure::CorruptedPacket),
+        Err(_) => Err(AuthFailure::CorruptedPacket("Could not decrypt handshake packet end.".to_owned())),
         Ok(buf) => {
             let mut pk = [0u8; crypto_box::PUBLICKEYBYTES];
             pk.copy_from_slice(&buf[0..crypto_box::PUBLICKEYBYTES]);
