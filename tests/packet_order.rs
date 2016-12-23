@@ -22,7 +22,7 @@ fn initialize() -> (Wrapper<()>, Wrapper<String>) {
     let (peer2_pk, peer2_sk) = gen_keypair();
 
     let mut peer1 = Wrapper::new_outgoing_connection(
-            peer1_pk, peer1_sk, peer2_pk, peer1_credentials, None, ());
+            peer1_pk, peer1_sk, peer2_pk, peer1_credentials, None, (), None);
 
     assert_eq!(peer1.connection_state(), ConnectionState::Uninitialized);
 
@@ -33,7 +33,7 @@ fn initialize() -> (Wrapper<()>, Wrapper<String>) {
     let packet = packets.remove(0);
 
     let (mut peer2, messages) = Wrapper::new_incoming_connection(
-            peer2_pk, peer2_sk, Credentials::None, Some(peer2_allowed_credentials), packet).unwrap();
+            peer2_pk, peer2_sk, Credentials::None, Some(peer2_allowed_credentials), None, packet).unwrap();
     assert_eq!(messages, vec![]); // peer1 used wrap_message,there must be no piggy-backed data
     assert_eq!(peer1.connection_state(), ConnectionState::Handshake);
     assert_eq!(peer2.connection_state(), ConnectionState::Handshake);

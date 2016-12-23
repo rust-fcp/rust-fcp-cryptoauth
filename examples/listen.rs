@@ -28,7 +28,7 @@ pub fn main() {
     let dest = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 54321);
 
     let mut conn = Wrapper::new_outgoing_connection(
-            my_pk, my_sk, their_pk, credentials, Some(allowed_peers), "my peer");
+            my_pk, my_sk, their_pk, credentials, Some(allowed_peers), "my peer", None);
 
     println!("1");
 

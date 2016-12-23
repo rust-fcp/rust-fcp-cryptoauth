@@ -10,6 +10,7 @@
 //! available in this module (or reexported by it), please report it.
 
 use std::collections::HashMap;
+use byteorder::{ByteOrder, BigEndian};
 
 use passwords::PasswordStore;
 use session::{Session, SessionState};
@@ -60,6 +61,8 @@ pub struct Wrapper<PeerId: Clone> {
     my_credentials: Credentials,
     password_store: Option<PasswordStore<PeerId>>,
     peer_id: Option<PeerId>,
+    my_session_handle: Option<u32>,
+    peer_session_handle: Option<u32>,
     session: Session,
 }
 
@@ -79,12 +82,21 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     /// used by the calling library to identify the peer.
     /// It does not have to be unique (even `()` works).
     /// It won't be sent over the network by `fcp_cryptoauth`.
+    ///
+    /// `session_handle`, if provided, is an integer that will be sent in
+    /// the CA handshake packets to ask the peer to use is as a *prefix*
+    /// to future CA packets.
+    /// If provided, a `session_handle` will also be expected from the other
+    /// peer, and available as `peer_session_handle`.
+    /// In the FCP, this is used for all inner (end-to-end) CA sessions,
+    /// and never for outer (point-to-point) sessions.
     pub fn new_outgoing_connection(
             my_pk: PublicKey, my_sk: SecretKey,
             their_pk: PublicKey,
             my_credentials: Credentials,
             allowed_peers: Option<HashMap<Credentials, PeerId>>,
             peer_id: PeerId,
+            session_handle: Option<u32>,
             ) -> Wrapper<PeerId> {
 
         let password_store = allowed_peers.map(hashmap_to_password_store);
@@ -93,6 +105,8 @@ impl<PeerId: Clone> Wrapper<PeerId> {
             my_credentials: my_credentials,
             password_store: password_store,
             peer_id: Some(peer_id),
+            my_session_handle: session_handle,
+            peer_session_handle: None,
             session: Session::new(my_pk, my_sk, their_pk, SessionState::UninitializedKnownPeer),
         }
     }
@@ -120,6 +134,8 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     /// If set to None, no authentication will be required for incoming
     /// peers.
     ///
+    /// `session_handle` is the same as for `new_outgoing_connection`.
+    ///
     /// Returns `Err` if and only if the message is not a well-formed
     /// Hello packet or the peer is not in the `allowed_peers`.
     /// Otherwise, returns `Ok((wrapper, piggybacked_message))`.
@@ -127,6 +143,7 @@ impl<PeerId: Clone> Wrapper<PeerId> {
             my_pk: PublicKey, my_sk: SecretKey,
             my_credentials: Credentials,
             allowed_peers: Option<HashMap<Credentials, PeerId>>,
+            session_handle: Option<u32>,
             packet: Vec<u8>,
             ) -> Result<(Wrapper<PeerId>, Vec<u8>), AuthFailure> {
 
@@ -145,15 +162,19 @@ impl<PeerId: Clone> Wrapper<PeerId> {
         let mut session = Session::new(
                 my_pk, my_sk, their_pk, SessionState::UninitializedUnknownPeer);
 
-        let (peer_id, data) = try!(Wrapper::parse_hello(&mut session, &password_store, &packet));
+        let (peer_id, content) = try!(Wrapper::parse_hello(&mut session, &password_store, &packet));
 
-        let wrapper = Wrapper {
+        let mut wrapper = Wrapper {
             my_credentials: my_credentials,
             password_store: password_store,
             peer_id: peer_id,
+            my_session_handle: session_handle,
+            peer_session_handle: None,
             session: session,
         };
-        Ok((wrapper, data))
+        let (handle, new_content) = wrapper.extract_session_handle(content);
+        wrapper.peer_session_handle = handle;
+        Ok((wrapper, new_content))
     }
 
     /// Takes an unencrypted message and returns one (eventually more
@@ -190,6 +211,18 @@ impl<PeerId: Clone> Wrapper<PeerId> {
         packets
     }
 
+    fn prefix_session_handle(&self, msg: &[u8]) -> Vec<u8> {
+        match self.my_session_handle {
+            None => msg.to_vec(), // TODO: do not copy
+            Some(handle) => {
+                let mut final_msg = vec![0; msg.len()+4];
+                BigEndian::write_u32(&mut final_msg[0..4], handle);
+                final_msg[4..].copy_from_slice(msg); // TODO: do not copy
+                final_msg
+            },
+        }
+    }
+
     /// Similar to `wrap_message`, but tries to send the message
     /// faster, but does not guarantee forward secrecy
     /// of the message, and the content may be replayed by anyone.
@@ -210,7 +243,8 @@ impl<PeerId: Clone> Wrapper<PeerId> {
             SessionState::ReceivedHello { .. } |
             SessionState::WaitingKey { .. } |
             SessionState::SentKey { .. } => {
-                if let Some(packet) = handshake::create_next_handshake_packet(&mut self.session, &self.my_credentials, msg) {
+                let final_msg = self.prefix_session_handle(msg);
+                if let Some(packet) = handshake::create_next_handshake_packet(&mut self.session, &self.my_credentials, &final_msg) {
                     packets.push(packet.raw);
                 }
             },
@@ -226,6 +260,19 @@ impl<PeerId: Clone> Wrapper<PeerId> {
             packets.append(&mut self.upkeep());
         }
         packets
+    }
+
+    fn extract_session_handle(&self, content: Vec<u8>) -> (Option<u32>, Vec<u8>) {
+        match self.my_session_handle {
+            Some(_) => {
+                // It is an inner CA session, we have to extract the
+                // session handle
+                let handle = Some(BigEndian::read_u32(&content[0..4]));
+                let new_content = content[4..].to_vec(); // TODO: do not copy
+                (handle, new_content)
+            }
+            None => (None, content)
+        }
     }
 
     /// Takes an encrypted packet and returns one (eventually more or
@@ -280,12 +327,15 @@ impl<PeerId: Clone> Wrapper<PeerId> {
                     },
                     SessionState::SentKey { ref shared_secret_key, .. } => {
                         // TODO: factorize with Established
-                        Ok(vec![try!(connection::open_packet(
+                        let content = try!(connection::open_packet(
                                 &mut self.session.their_nonce_offset,
                                 &mut self.session.their_nonce_bitfield,
                                 &shared_secret_key,
                                 false,
-                                &packet))])
+                                &packet));
+                        let (handle, new_content) = self.extract_session_handle(content);
+                        self.peer_session_handle = handle;
+                        Ok(vec![new_content])
                     },
                     SessionState::Established { ref shared_secret_key, ref initiator_is_me, .. } => {
                         Ok(vec![try!(connection::open_packet(
@@ -298,14 +348,17 @@ impl<PeerId: Clone> Wrapper<PeerId> {
                 }
             },
             Ok(HandshakePacketType::Hello) | Ok(HandshakePacketType::RepeatHello) => {
-                let (peer_id, msg) = try!(Wrapper::parse_hello(
+                let (peer_id, content) = try!(Wrapper::parse_hello(
                         &mut self.session, &self.password_store, &HandshakePacket { raw: packet }));
+                let (handle, new_content) = self.extract_session_handle(content);
+                self.peer_session_handle = handle;
                 self.peer_id = peer_id.clone();
-                if msg.len() == 0 {
+
+                if new_content.len() == 0 {
                     Ok(Vec::new())
                 }
                 else {
-                    Ok(vec![msg])
+                    Ok(vec![new_content])
                 }
             }
             Ok(HandshakePacketType::Key) | Ok(HandshakePacketType::RepeatKey) => {
@@ -321,13 +374,17 @@ impl<PeerId: Clone> Wrapper<PeerId> {
                     },
                     SessionState::WaitingKey { .. } |
                     SessionState::SentHello { .. } => {
-                        let msg = try!(handshake::parse_key_packet(
+                        let content = try!(handshake::parse_key_packet(
                                 &mut self.session, &HandshakePacket { raw: packet }));
-                        if msg.len() == 0 {
+
+                        let (handle, new_content) = self.extract_session_handle(content);
+                        self.peer_session_handle = handle;
+
+                        if new_content.len() == 0 {
                             Ok(Vec::new())
                         }
                         else {
-                            Ok(vec![msg])
+                            Ok(vec![new_content])
                         }
                     },
                 }
@@ -353,7 +410,8 @@ impl<PeerId: Clone> Wrapper<PeerId> {
             SessionState::WaitingKey { .. } |
             SessionState::ReceivedHello { .. } |
             SessionState::SentKey { .. } => {
-                if let Some(packet) = handshake::create_next_handshake_packet(&mut self.session, &self.my_credentials, &vec![]) {
+                let msg = self.prefix_session_handle(&vec![]);
+                if let Some(packet) = handshake::create_next_handshake_packet(&mut self.session, &self.my_credentials, &msg) {
                     vec![packet.raw]
                 }
                 else {
@@ -393,5 +451,10 @@ impl<PeerId: Clone> Wrapper<PeerId> {
     /// Returns the peer id of the other peer.
     pub fn peer_id(&self) -> &Option<PeerId> {
         &self.peer_id
+    }
+
+    /// Returns the peer id of the other peer.
+    pub fn peer_session_handle(&self) -> Option<u32> {
+        self.peer_session_handle.clone()
     }
 }
