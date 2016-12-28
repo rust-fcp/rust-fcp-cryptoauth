@@ -2,6 +2,10 @@
 name = "fcp_cryptoauth"
 version = "0.1.0"
 authors = ["Valentin Lorentz <progval+fcp@progval.net>"]
+description = "Implementation of the Futuristic Connectivity Protocol's CryptoAuth layer (cryptographic authentication and encryption over unreliable channels)."
+license = "MIT"
+repository = "https://github.com/rust-fcp/rust-fcp-cryptoauth"
+readme = "README.md"
 
 [dependencies]
 rust_sodium = "~0.1.2"
