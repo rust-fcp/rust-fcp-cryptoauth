@@ -21,6 +21,23 @@ pub trait FromBase32: Sized {
     fn from_base32(characters: &[u8]) -> Option<Self>;
 }
 
+/// Used to encode a CryptoAuth public key.
+///
+/// # Example
+///
+/// ```
+/// use fcp_cryptoauth::cryptography::crypto_box::PublicKey;
+/// use fcp_cryptoauth::keys::FromBase32;
+/// use fcp_cryptoauth::keys::ToBase32;
+/// let representation = b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k";
+/// let pk = PublicKey::from_base32(representation).unwrap();
+/// assert_eq!(pk.to_base32(), representation.to_vec());
+/// ```
+pub trait ToBase32: Sized {
+    // encode a byte array into an other base32-encoded byte array
+    fn to_base32(&self) -> Vec<u8>;
+}
+
 /// Used to decode a CryptoAuth secret key.
 ///
 /// # Example
@@ -98,6 +115,62 @@ impl FromBase32 for crypto_box::PublicKey {
         else {
             None
         }
+    }
+}
+
+const BASE32_ENCODING_TABLE: [u8; 32] = [
+        '0' as u8, '1' as u8, '2' as u8, '3' as u8, '4' as u8,
+        '5' as u8, '6' as u8, '7' as u8, '8' as u8, '9' as u8,
+        'b' as u8, 'c' as u8, 'd' as u8, 'f' as u8, 'g' as u8,
+        'h' as u8, 'j' as u8, 'k' as u8, 'l' as u8, 'm' as u8,
+        'n' as u8, 'p' as u8, 'q' as u8, 'r' as u8, 's' as u8,
+        't' as u8, 'u' as u8, 'v' as u8, 'w' as u8, 'x' as u8,
+        'y' as u8, 'z' as u8];
+pub fn encode_base32(bytes: &[u8]) -> Vec<u8> {
+    let mut encoded: Vec<u8> = Vec::new();
+    encoded.reserve(bytes.len()*8/5);
+    let mut window = 0u16;
+    let mut bits_in_window = 0;
+    let mut bytes_offset = 0;
+    assert!(BASE32_ENCODING_TABLE.len() == 32);
+    while bytes_offset < bytes.len() || window > 0 {
+        if bits_in_window < 5 {
+            let byte = *bytes.get(bytes_offset).unwrap_or(&0);
+            bytes_offset += 1;
+            window += (byte as u16) << bits_in_window;
+            bits_in_window += 8;
+        }
+        let char_index = (window & 0b11111) as usize;
+        window >>= 5;
+        bits_in_window -= 5;
+        encoded.push(BASE32_ENCODING_TABLE[char_index]);
+    }
+    encoded
+}
+
+#[test]
+fn test_encode_decode_base32() {
+    let key = b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050";
+    let expected = "2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb05";
+    assert_eq!(String::from_utf8(encode_base32(&decode_base32(key).unwrap())).unwrap(), expected)
+}
+
+#[test]
+fn test_encode_base32() {
+    assert_eq!(String::from_utf8(encode_base32(&vec![0x64, 0x88])).unwrap(), "4321");
+}
+
+impl ToBase32 for crypto_box::PublicKey {
+    /// Returns the Base32 representation of a Public key
+    ///
+    /// TODO: better errors
+    fn to_base32(&self) -> Vec<u8> {
+        let mut repr = encode_base32(&self.0);
+        assert!(repr.len() <= 52);
+        repr.resize(52, '0' as u8);
+        repr.push('.' as u8);
+        repr.push('k' as u8);
+        repr
     }
 }
 
