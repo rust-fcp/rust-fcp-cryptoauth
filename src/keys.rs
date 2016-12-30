@@ -1,5 +1,6 @@
 extern crate hex;
 use hex::FromHex as VecFromHex;
+use hex::ToHex as VecToHex;
 use cryptography::crypto_box;
 
 pub const PUBLIC_KEY_BYTES: usize = crypto_box::PUBLICKEYBYTES;
@@ -31,11 +32,11 @@ pub trait FromBase32: Sized {
 /// use fcp_cryptoauth::keys::ToBase32;
 /// let representation = b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k";
 /// let pk = PublicKey::from_base32(representation).unwrap();
-/// assert_eq!(pk.to_base32(), representation.to_vec());
+/// assert_eq!(pk.to_base32(), String::from_utf8(representation.to_vec()).unwrap());
 /// ```
 pub trait ToBase32: Sized {
     // encode a byte array into an other base32-encoded byte array
-    fn to_base32(&self) -> Vec<u8>;
+    fn to_base32(&self) -> String;
 }
 
 /// Used to decode a CryptoAuth secret key.
@@ -50,6 +51,22 @@ pub trait ToBase32: Sized {
 /// ```
 pub trait FromHex: Sized {
     fn from_hex(characters: &[u8]) -> Option<Self>;
+}
+
+/// Used to encode a CryptoAuth secret key.
+///
+/// # Example
+///
+/// ```
+/// use fcp_cryptoauth::cryptography::crypto_box::SecretKey;
+/// use fcp_cryptoauth::keys::FromHex;
+/// use fcp_cryptoauth::keys::ToHex;
+/// let representation = b"ac3e53b518e68449692b0b2f2926ef2fdc1eac5b9dbd10a48114263b8c8ed12e";
+/// let sk = SecretKey::from_hex(representation).unwrap();
+/// assert_eq!(sk.to_hex(), String::from_utf8(representation.to_vec()).unwrap());
+/// ```
+pub trait ToHex: Sized {
+    fn to_hex(&self) -> String;
 }
 
 // DNSCurve's Base32 decoding table
@@ -164,13 +181,13 @@ impl ToBase32 for crypto_box::PublicKey {
     /// Returns the Base32 representation of a Public key
     ///
     /// TODO: better errors
-    fn to_base32(&self) -> Vec<u8> {
+    fn to_base32(&self) -> String {
         let mut repr = encode_base32(&self.0);
         assert!(repr.len() <= 52);
         repr.resize(52, '0' as u8);
         repr.push('.' as u8);
         repr.push('k' as u8);
-        repr
+        String::from_utf8(repr).unwrap()
     }
 }
 
@@ -191,4 +208,17 @@ impl FromHex for crypto_box::SecretKey {
             Err(_) => None,
         }
     }
+}
+
+impl ToHex for crypto_box::SecretKey {
+    fn to_hex(&self) -> String {
+        self.0.to_hex()
+    }
+}
+
+#[test]
+fn test_hex() {
+    // Required for the result of SecretKey::to_hex() to always be
+    // 64 characters.
+    assert_eq!(vec![0, 0].to_hex(), "0000");
 }
