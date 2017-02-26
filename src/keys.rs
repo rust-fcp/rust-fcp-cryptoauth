@@ -5,7 +5,7 @@ use rust_sodium::crypto::hash::sha512;
 
 use hex::FromHex as VecFromHex;
 use hex::ToHex as VecToHex;
-use cryptography::crypto_box;
+pub use cryptography::crypto_box;
 
 pub const PUBLIC_KEY_BYTES: usize = crypto_box::PUBLICKEYBYTES;
 pub const SECRET_KEY_BYTES: usize = crypto_box::SECRETKEYBYTES;

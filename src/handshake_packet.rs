@@ -58,6 +58,8 @@ use std::fmt;
 
 use hex::ToHex;
 use handshake_packet::byteorder::ByteOrder;
+use keys::ToBase32;
+use keys::crypto_box::PublicKey;
 
 /// Represents the CryptoAuth session state, as defined by
 /// https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#protocol
@@ -85,7 +87,7 @@ impl fmt::Debug for HandshakePacket {
         state:                   {:?},
         auth_challenge:          0x{},
         nonce:                   0x{},
-        sender_perm_pub_key:     0x{},
+        sender_perm_pub_key:     0x{} ({}),
         msg_auth_code:           0x{},
         sender_enc_temp_pub_key: 0x{},
         encrypted_data:          0x{}
@@ -94,7 +96,7 @@ impl fmt::Debug for HandshakePacket {
             self.packet_type(),
             self.auth_challenge().to_vec().to_hex(),
             self.random_nonce().to_vec().to_hex(),
-            self.sender_perm_pub_key().to_vec().to_hex(),
+            self.sender_perm_pub_key().to_vec().to_hex(), PublicKey(self.sender_perm_pub_key()).to_base32(),
             self.msg_auth_code().to_vec().to_hex(),
             self.sender_encrypted_temp_pub_key().to_vec().to_hex(),
             self.encrypted_data().to_vec().to_hex()
