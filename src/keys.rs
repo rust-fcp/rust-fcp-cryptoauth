@@ -1,4 +1,8 @@
 extern crate hex;
+
+use std::net::Ipv6Addr;
+use rust_sodium::crypto::hash::sha512;
+
 use hex::FromHex as VecFromHex;
 use hex::ToHex as VecToHex;
 use cryptography::crypto_box;
@@ -189,6 +193,28 @@ impl ToBase32 for crypto_box::PublicKey {
         repr.push('k' as u8);
         String::from_utf8(repr).unwrap()
     }
+}
+
+/// Converts a public key to an Ipv6Addr, according to the first paragraph of
+/// https://github.com/cjdelisle/cjdns/blob/cjdns-v19.1/doc/Whitepaper.md#pulling-it-all-together
+///
+/// # Example
+///
+/// ```
+/// use std::net::Ipv6Addr;
+/// use std::str::FromStr;
+/// use fcp_cryptoauth::cryptography::crypto_box::PublicKey;
+/// use fcp_cryptoauth::keys::{FromBase32, publickey_to_ipv6addr};
+/// let pk = PublicKey::from_base32(b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k").unwrap();
+/// let ip6 = Ipv6Addr::from_str("fc8f:a188:1b5:4de9:b0cb:5729:23a1:60f9").unwrap();
+/// assert_eq!(publickey_to_ipv6addr(&pk), ip6);
+/// ```
+pub fn publickey_to_ipv6addr(pk: &crypto_box::PublicKey) -> Ipv6Addr {
+    let digest1 = sha512::hash(&pk.0);
+    let digest2 = sha512::hash(&digest1.0);
+    let mut octets = [0u8; 16];
+    octets.copy_from_slice(&digest2.0[0..16]);
+    Ipv6Addr::from(octets)
 }
 
 impl FromHex for crypto_box::SecretKey {
