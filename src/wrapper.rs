@@ -19,7 +19,7 @@ use handshake_packet::{HandshakePacket, HandshakePacketType};
 use connection;
 
 pub use cryptography::crypto_box::{PublicKey, SecretKey, gen_keypair};
-pub use keys::{FromBase32, FromHex};
+pub use keys::{FromBase32, FromHex, publickey_to_ipv6addr};
 pub use auth_failure::AuthFailure;
 pub use authentication::Credentials;
 pub use super::init;
