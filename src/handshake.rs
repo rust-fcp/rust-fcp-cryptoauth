@@ -293,7 +293,8 @@ pub fn parse_authnone_hello_packet(
             Ok(data)
         }
         Err(_) => {
-            Err(AuthFailure::CorruptedPacket("Could not decrypt authnone Hello packet end.".to_owned()))},
+            Err(AuthFailure::CorruptedPacket(format!("Could not decrypt authnone Hello packet end of:\n{:?}", packet)))
+        },
     }
 }
 
