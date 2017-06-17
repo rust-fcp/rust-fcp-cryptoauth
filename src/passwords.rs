@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use cryptography::sha256;
+use authentication::Credentials;
 
 pub struct PasswordStore<Peer: Clone> {
     // sha256(sha256(password))[1..7] -> (password, peer)
@@ -60,5 +61,19 @@ impl<Peer: Clone> PasswordStore<Peer> {
     /// Returns all peers whose sha256(login)[1..7] match
     pub fn get_candidate_peers_from_login_hash_slice(&self, hashed_login_slice: &[u8; 7]) -> Option<&Vec<(Vec<u8>, Peer)>> {
         self.login_peers.get(hashed_login_slice)
+    }
+}
+
+impl<PeerId: Clone> From<HashMap<Credentials, PeerId>> for PasswordStore<PeerId> {
+    fn from(mut map: HashMap<Credentials, PeerId>) -> Self {
+        let mut store = PasswordStore::new();
+        for (credentials, peer_id) in map.drain() {
+            match credentials {
+                Credentials::LoginPassword { login, password } => store.add_peer(Some(&login), password, peer_id),
+                Credentials::Password { password } => store.add_peer(None, password, peer_id),
+                Credentials::None => unimplemented!(),
+            }
+        }
+        store
     }
 }

@@ -11,6 +11,7 @@ pub mod session;
 pub mod authentication;
 pub mod handshake;
 pub mod connection;
+pub mod connection_state;
 
 pub mod wrapper;
 
