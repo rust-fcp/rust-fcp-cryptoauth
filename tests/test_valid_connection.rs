@@ -2,7 +2,7 @@ extern crate fcp_cryptoauth;
 
 use std::collections::HashMap;
 
-use fcp_cryptoauth::wrapper::*;
+use fcp_cryptoauth::*;
 
 fn arr_to_vec(s: &[u8]) -> Vec<u8> {
     s.to_owned().to_vec()
@@ -22,7 +22,7 @@ fn loginpassword_noreciprocal_noupkeep_nopiggyback() {
     let (peer1_pk, peer1_sk) = gen_keypair();
     let (peer2_pk, peer2_sk) = gen_keypair();
 
-    let mut peer1 = Wrapper::new_outgoing_connection(
+    let mut peer1 = CAWrapper::new_outgoing_connection(
             peer1_pk, peer1_sk, peer2_pk, peer1_credentials, None, (), None);
 
     assert_eq!(peer1.connection_state(), ConnectionState::Uninitialized);
@@ -33,7 +33,7 @@ fn loginpassword_noreciprocal_noupkeep_nopiggyback() {
     assert_eq!(packets.len(), 1);
     let packet = packets.remove(0);
 
-    let (mut peer2, messages) = Wrapper::new_incoming_connection(
+    let (mut peer2, messages) = CAWrapper::new_incoming_connection(
             peer2_pk, peer2_sk, Credentials::None, Some(peer2_allowed_credentials), None, packet).unwrap();
     assert_eq!(messages, vec![]); // peer1 used wrap_message,there must be no piggy-backed data
     assert_eq!(peer1.connection_state(), ConnectionState::Handshake);
@@ -95,7 +95,7 @@ fn password_noreciprocal_noupkeep_nopiggyback() {
     let (peer1_pk, peer1_sk) = gen_keypair();
     let (peer2_pk, peer2_sk) = gen_keypair();
 
-    let mut peer1 = Wrapper::new_outgoing_connection(
+    let mut peer1 = CAWrapper::new_outgoing_connection(
             peer1_pk, peer1_sk, peer2_pk, peer1_credentials, None, (), None);
 
     assert_eq!(peer1.connection_state(), ConnectionState::Uninitialized);
@@ -106,7 +106,7 @@ fn password_noreciprocal_noupkeep_nopiggyback() {
     assert_eq!(packets.len(), 1);
     let packet = packets.remove(0);
 
-    let (mut peer2, messages) = Wrapper::new_incoming_connection(
+    let (mut peer2, messages) = CAWrapper::new_incoming_connection(
             peer2_pk, peer2_sk, Credentials::None, Some(peer2_allowed_credentials), None, packet).unwrap();
     assert_eq!(messages, vec![]); // peer1 used wrap_message,there must be no piggy-backed data
     assert_eq!(peer1.connection_state(), ConnectionState::Handshake);
@@ -164,7 +164,7 @@ fn authnone_noreciprocal_noupkeep_nopiggyback() {
     let (peer1_pk, peer1_sk) = gen_keypair();
     let (peer2_pk, peer2_sk) = gen_keypair();
 
-    let mut peer1 = Wrapper::new_outgoing_connection(
+    let mut peer1 = CAWrapper::new_outgoing_connection(
             peer1_pk, peer1_sk, peer2_pk, peer1_credentials, None, (), None);
 
     assert_eq!(peer1.connection_state(), ConnectionState::Uninitialized);
@@ -175,7 +175,7 @@ fn authnone_noreciprocal_noupkeep_nopiggyback() {
     assert_eq!(packets.len(), 1);
     let packet = packets.remove(0);
 
-    let (mut peer2, messages) = Wrapper::<()>::new_incoming_connection(
+    let (mut peer2, messages) = CAWrapper::<()>::new_incoming_connection(
             peer2_pk, peer2_sk, Credentials::None, None, None, packet).unwrap();
     assert_eq!(messages, vec![]); // peer1 used wrap_message,there must be no piggy-backed data
     assert_eq!(peer1.connection_state(), ConnectionState::Handshake);
@@ -233,9 +233,9 @@ fn loginpassword_reciprocal_noupkeep_nopiggyback_aux(peer1_pk: PublicKey, peer1_
     let mut allowed_credentials = HashMap::new();
     allowed_credentials.insert(credentials.clone(), "peer1");
 
-    let mut peer1 = Wrapper::new_outgoing_connection(
+    let mut peer1 = CAWrapper::new_outgoing_connection(
             peer1_pk, peer1_sk, peer2_pk, credentials.clone(), Some(allowed_credentials.clone()), "peer2 (of peer1)", None);
-    let mut peer2 = Wrapper::new_outgoing_connection(
+    let mut peer2 = CAWrapper::new_outgoing_connection(
             peer2_pk, peer2_sk, peer1_pk, credentials, Some(allowed_credentials), "peer2 (of peer1)", None);
 
     assert_eq!(peer1.connection_state(), ConnectionState::Uninitialized);
@@ -340,7 +340,7 @@ fn authnone() {
     let (peer1_pk, peer1_sk) = gen_keypair();
     let (peer2_pk, peer2_sk) = gen_keypair();
 
-    let mut peer1 = Wrapper::new_outgoing_connection(
+    let mut peer1 = CAWrapper::new_outgoing_connection(
             peer1_pk, peer1_sk, peer2_pk, peer1_credentials, None, (), None);
 
     assert_eq!(peer1.connection_state(), ConnectionState::Uninitialized);
@@ -355,7 +355,7 @@ fn authnone() {
     assert_eq!(packet[4], 2); // Check it's actually LoginPassword for now
     packet[4] = 0;
 
-    let res = Wrapper::new_incoming_connection(
+    let res = CAWrapper::new_incoming_connection(
             peer2_pk, peer2_sk, Credentials::None, Some(peer2_allowed_credentials), None, packet);
     assert!(res.is_err());
     assert_eq!(AuthFailure::AuthNone, res.err().unwrap());
@@ -375,7 +375,7 @@ fn loginpassword_noreciprocal_noupkeep_piggyback() {
     let (peer1_pk, peer1_sk) = gen_keypair();
     let (peer2_pk, peer2_sk) = gen_keypair();
 
-    let mut peer1 = Wrapper::new_outgoing_connection(
+    let mut peer1 = CAWrapper::new_outgoing_connection(
             peer1_pk, peer1_sk, peer2_pk, peer1_credentials, None, (), None);
 
     assert_eq!(peer1.connection_state(), ConnectionState::Uninitialized);
@@ -386,7 +386,7 @@ fn loginpassword_noreciprocal_noupkeep_piggyback() {
     assert_eq!(packets.len(), 1);
     let packet = packets.remove(0);
 
-    let (mut peer2, messages) = Wrapper::new_incoming_connection(
+    let (mut peer2, messages) = CAWrapper::new_incoming_connection(
             peer2_pk, peer2_sk, Credentials::None, Some(peer2_allowed_credentials), None, packet).unwrap();
     assert_eq!(messages, arr_to_vec(b"piggyback (1)"));
     assert_eq!(peer1.connection_state(), ConnectionState::Handshake);
@@ -415,7 +415,7 @@ fn inner() {
     let (peer1_pk, peer1_sk) = gen_keypair();
     let (peer2_pk, peer2_sk) = gen_keypair();
 
-    let mut peer1 = Wrapper::new_outgoing_connection(
+    let mut peer1 = CAWrapper::new_outgoing_connection(
             peer1_pk, peer1_sk, peer2_pk, peer1_credentials, None, (), Some(0x01020304));
 
     assert_eq!(peer1.connection_state(), ConnectionState::Uninitialized);
@@ -426,7 +426,7 @@ fn inner() {
     assert_eq!(packets.len(), 1);
     let packet = packets.remove(0);
 
-    let (mut peer2, messages) = Wrapper::<()>::new_incoming_connection(
+    let (mut peer2, messages) = CAWrapper::<()>::new_incoming_connection(
             peer2_pk, peer2_sk, Credentials::None, None, Some(0x04030201), packet).unwrap();
     assert_eq!(messages, vec![]); // peer1 used wrap_message,there must be no piggy-backed data
     assert_eq!(peer1.connection_state(), ConnectionState::Handshake);

@@ -2,13 +2,13 @@ extern crate fcp_cryptoauth;
 
 use std::collections::HashMap;
 
-use fcp_cryptoauth::wrapper::*;
+use fcp_cryptoauth::*;
 
 fn arr_to_vec(s: &[u8]) -> Vec<u8> {
     s.to_owned().to_vec()
 }
 
-fn initialize() -> (Wrapper<()>, Wrapper<String>) {
+fn initialize() -> (CAWrapper<()>, CAWrapper<String>) {
     init();
 
     let peer1_credentials = Credentials::LoginPassword {
@@ -21,7 +21,7 @@ fn initialize() -> (Wrapper<()>, Wrapper<String>) {
     let (peer1_pk, peer1_sk) = gen_keypair();
     let (peer2_pk, peer2_sk) = gen_keypair();
 
-    let mut peer1 = Wrapper::new_outgoing_connection(
+    let mut peer1 = CAWrapper::new_outgoing_connection(
             peer1_pk, peer1_sk, peer2_pk, peer1_credentials, None, (), None);
 
     assert_eq!(peer1.connection_state(), ConnectionState::Uninitialized);
@@ -32,7 +32,7 @@ fn initialize() -> (Wrapper<()>, Wrapper<String>) {
     assert_eq!(packets.len(), 1);
     let packet = packets.remove(0);
 
-    let (mut peer2, messages) = Wrapper::new_incoming_connection(
+    let (mut peer2, messages) = CAWrapper::new_incoming_connection(
             peer2_pk, peer2_sk, Credentials::None, Some(peer2_allowed_credentials), None, packet).unwrap();
     assert_eq!(messages, vec![]); // peer1 used wrap_message,there must be no piggy-backed data
     assert_eq!(peer1.connection_state(), ConnectionState::Handshake);

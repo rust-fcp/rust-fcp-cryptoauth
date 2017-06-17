@@ -4,7 +4,7 @@ extern crate fcp_cryptoauth;
 use std::net::{UdpSocket, SocketAddr, IpAddr, Ipv6Addr};
 use std::collections::HashMap;
 
-use fcp_cryptoauth::wrapper::*;
+use fcp_cryptoauth::*;
 
 use hex::ToHex;
 
@@ -27,7 +27,7 @@ pub fn main() {
     let sock = UdpSocket::bind("[::1]:12345").unwrap();
     let dest = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 54321);
 
-    let mut conn = Wrapper::new_outgoing_connection(
+    let mut conn = CAWrapper::new_outgoing_connection(
             my_pk, my_sk, their_pk, credentials, Some(allowed_peers), "my peer", None);
 
     println!("1");
