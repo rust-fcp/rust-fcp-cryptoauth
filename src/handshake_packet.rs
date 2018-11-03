@@ -105,6 +105,14 @@ impl fmt::Debug for HandshakePacket {
 }
 
 impl HandshakePacket {
+    pub fn new_from_raw(raw: Vec<u8>) -> Result<HandshakePacket, Vec<u8>> {
+        if raw.len() < 120 {
+            Err(raw)
+        }
+        else {
+            Ok(HandshakePacket { raw })
+        }
+    }
     /// Returns the session state of the packet if it is a known session
     /// state, as defined by
     /// https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#protocol

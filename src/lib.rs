@@ -136,7 +136,7 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
             packet: Vec<u8>,
             ) -> Result<(CAWrapper<PeerId>, Vec<u8>), AuthFailure> {
 
-        let packet = HandshakePacket { raw: packet };
+        let packet = HandshakePacket::new_from_raw(packet).unwrap();
 
         match packet.packet_type() {
             Ok(HandshakePacketType::Hello) | Ok(HandshakePacketType::RepeatHello) => (),
