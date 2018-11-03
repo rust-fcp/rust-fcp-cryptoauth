@@ -303,7 +303,7 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
     }
 
 
-    pub fn unwrap_hello_packet(&mut self, packet: Vec<u8>) -> Result<Vec<Vec<u8>>, AuthFailure> {
+    fn unwrap_hello_packet(&mut self, packet: Vec<u8>) -> Result<Vec<Vec<u8>>, AuthFailure> {
         let (peer_id, content) = try!(CAWrapper::parse_hello(
                 &mut self.session, &self.password_store, &HandshakePacket { raw: packet }));
         let (handle, new_content) = self.extract_session_handle(content);
@@ -318,7 +318,7 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
         }
     }
 
-    pub fn unwrap_key_packet(&mut self, packet: Vec<u8>) -> Result<Vec<Vec<u8>>, AuthFailure> {
+    fn unwrap_key_packet(&mut self, packet: Vec<u8>) -> Result<Vec<Vec<u8>>, AuthFailure> {
         match self.session.state.clone() { // TODO: do not clone
             SessionState::UninitializedUnknownPeer |
             SessionState::UninitializedKnownPeer |
