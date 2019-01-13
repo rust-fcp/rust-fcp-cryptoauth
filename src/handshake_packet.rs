@@ -84,8 +84,8 @@ impl fmt::Debug for HandshakePacket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "HandshakePacket {{
         raw:                     0x{},
-        state:                   {:?},
-        auth_challenge:          0x{},
+        packet_type:             {:?},
+        auth_challenge:          0x{} ({:?}),
         nonce:                   0x{},
         sender_perm_pub_key:     0x{} ({}),
         msg_auth_code:           0x{},
@@ -95,6 +95,7 @@ impl fmt::Debug for HandshakePacket {
             self.raw.to_vec().to_hex(),
             self.packet_type(),
             self.auth_challenge().to_vec().to_hex(),
+            self.auth_challenge(),
             self.random_nonce().to_vec().to_hex(),
             self.sender_perm_pub_key().to_vec().to_hex(), PublicKey(self.sender_perm_pub_key()).to_base32(),
             self.msg_auth_code().to_vec().to_hex(),
