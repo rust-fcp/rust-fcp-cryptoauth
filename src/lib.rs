@@ -334,12 +334,12 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
             SessionState::ReceivedHello { .. } => {
                 Err(AuthFailure::UnexpectedPacket("Received a key packet while expecting a hello.".to_owned()))
             },
-            SessionState::SentKey { .. } |
-            SessionState::Established { .. } => {
+            SessionState::SentKey { .. } => {
                 Err(AuthFailure::UnexpectedPacket("Received a key packet while expecting a data packet.".to_owned()))
             },
             SessionState::WaitingKey { .. } |
-            SessionState::SentHello { .. } => {
+            SessionState::SentHello { .. } |
+            SessionState::Established { .. } => {
                 let content = try!(handshake::parse_key_packet(
                         &mut self.session, &HandshakePacket { raw: packet }));
 

@@ -17,7 +17,13 @@ pub enum SessionState {
     ReceivedHello { their_temp_pk: PublicKey, handshake_nonce: Nonce, shared_secret_key: PrecomputedKey },
     WaitingKey { their_temp_pk: PublicKey, handshake_nonce: Nonce, shared_secret_key: PrecomputedKey }, // When we received a Hello from a lower key, don't send an Hello because it would reset their session
     SentKey { their_temp_pk: PublicKey, handshake_nonce: Nonce, shared_secret_key: PrecomputedKey },
-    Established { their_temp_pk: PublicKey, shared_secret_key: PrecomputedKey, initiator_is_me: bool },
+    Established {
+        their_temp_pk: PublicKey,
+        /// Used to open RepeatKey packets
+        handshake_shared_secret_key: PrecomputedKey,
+        shared_secret_key: PrecomputedKey,
+        initiator_is_me: bool
+    },
 }
 
 

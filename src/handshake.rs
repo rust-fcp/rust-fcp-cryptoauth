@@ -313,7 +313,8 @@ pub fn parse_key_packet(
     // If this is a key packet, do not check its auth.
     match session.state.clone() { // TODO: do not clone
         SessionState::WaitingKey { shared_secret_key, .. } |
-        SessionState::SentHello { shared_secret_key, .. } => {
+        SessionState::SentHello { shared_secret_key, .. } |
+        SessionState::Established { handshake_shared_secret_key: shared_secret_key, .. } => {
             // Obviously, only allow key packets if we sent an hello.
             // Also make sure the packet is authenticated with the
             // shared secret.
@@ -401,10 +402,11 @@ fn update_session_state_on_received_key(
     assert!(packet.packet_type() == Ok(HandshakePacketType::Key) ||
             packet.packet_type() == Ok(HandshakePacketType::RepeatKey));
     match session.state {
-        SessionState::WaitingKey { .. } |
-        SessionState::SentHello { .. } => {
+        SessionState::WaitingKey { ref shared_secret_key, .. } |
+        SessionState::SentHello { ref shared_secret_key, .. } => {
             SessionState::Established {
                 their_temp_pk: their_temp_pk,
+                handshake_shared_secret_key: shared_secret_key.clone(),
                 shared_secret_key: shared_secret_from_keys(
                         &session.my_temp_sk, &their_temp_pk),
                 initiator_is_me: true,
@@ -483,10 +485,11 @@ fn authenticate_packet_author<'a, Peer: Clone>(
 /// Should be called when the first (authenticated) non-handshake packet arrives.
 /// Otherwise, this is a no-op.
 pub fn finalize(session: &mut Session) {
-    match session.state {
-        SessionState::SentKey { their_temp_pk, .. } => {
+    match session.state.clone() { // TODO: do not clone
+        SessionState::SentKey { their_temp_pk, shared_secret_key, .. } => {
             session.state = SessionState::Established {
                 their_temp_pk: their_temp_pk,
+                handshake_shared_secret_key: shared_secret_key,
                 shared_secret_key: shared_secret_from_keys(
                         &session.my_temp_sk, &their_temp_pk),
                 initiator_is_me: false,
