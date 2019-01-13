@@ -21,7 +21,7 @@ use byteorder::{ByteOrder, BigEndian};
 
 use passwords::PasswordStore;
 use session::{Session, SessionState};
-use handshake_packet::{HandshakePacket, HandshakePacketType};
+use handshake_packet::{HandshakePacket, HandshakePacketType, peek_perm_pub_key};
 
 pub use authentication::Credentials;
 pub use auth_failure::AuthFailure;
@@ -37,6 +37,15 @@ pub use connection_state::ConnectionState;
 /// library.
 pub fn init() {
     rust_sodium::init();
+}
+
+/// Takes a peek at a Key packet to get the public key of its sender.
+/// This is used to find which session to find to unwrap it.
+///
+/// If this is not a handshake packet, returns `Err(true)`.
+/// If this is a malformed packet, returns `Err(false)`.
+pub fn peek_pk_key(packet: &[u8]) -> Result<PublicKey, bool> {
+    peek_perm_pub_key(packet).map(PublicKey)
 }
 
 /// Main wrapper class around a connection.

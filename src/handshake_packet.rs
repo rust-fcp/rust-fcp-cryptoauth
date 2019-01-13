@@ -74,6 +74,28 @@ pub enum HandshakePacketType {
     RepeatKey,   // 3u32
 }
 
+/// Returns a copy of the packet's sender permanent public key,
+/// as a byte array.
+///
+/// If this is not a handshake packet, returns `Err(true)`.
+/// If this is a malformed packet, returns `Err(false)`.
+pub(crate) fn peek_perm_pub_key(packet: &[u8]) -> Result<[u8; 32], bool> {
+    if packet.len() < 120 {
+        Err(false)
+    }
+    else {
+        let packet_type = byteorder::BigEndian::read_u32(&packet[0..4]);
+        match packet_type {
+            0u32 | 1u32 | 2u32 | 3u32 => {
+                let mut sender_perm_pub_key = [0u8; 32];
+                sender_perm_pub_key.copy_from_slice(&packet[40..72]);
+                Ok(sender_perm_pub_key)
+            },
+            _ => Err(true),
+        }
+    }
+}
+
 /// Represents a raw CryptoAuth packet, as defined by
 /// https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#packet-layout
 pub struct HandshakePacket {
