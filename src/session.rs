@@ -4,7 +4,7 @@
 use std::fmt;
 
 use cryptography::crypto_box;
-use cryptography::crypto_box::{PublicKey, SecretKey, PrecomputedKey, Nonce};
+use cryptography::crypto_box::{PublicKey, SecretKey, PrecomputedKey};
 
 #[derive(Debug)]
 #[derive(Clone)]
@@ -13,10 +13,10 @@ use cryptography::crypto_box::{PublicKey, SecretKey, PrecomputedKey, Nonce};
 pub enum SessionState {
     UninitializedUnknownPeer,
     UninitializedKnownPeer,
-    SentHello { handshake_nonce: Nonce, shared_secret_key: PrecomputedKey },
-    ReceivedHello { their_temp_pk: PublicKey, handshake_nonce: Nonce, shared_secret_key: PrecomputedKey },
-    WaitingKey { their_temp_pk: PublicKey, handshake_nonce: Nonce, shared_secret_key: PrecomputedKey }, // When we received a Hello from a lower key, don't send an Hello because it would reset their session
-    SentKey { their_temp_pk: PublicKey, handshake_nonce: Nonce, shared_secret_key: PrecomputedKey },
+    SentHello { shared_secret_key: PrecomputedKey },
+    ReceivedHello { their_temp_pk: PublicKey, shared_secret_key: PrecomputedKey },
+    WaitingKey { their_temp_pk: PublicKey, shared_secret_key: PrecomputedKey }, // When we received a Hello from a lower key, don't send an Hello because it would reset their session
+    SentKey { their_temp_pk: PublicKey, shared_secret_key: PrecomputedKey },
     Established {
         their_temp_pk: PublicKey,
         /// Used to open RepeatKey packets

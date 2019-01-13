@@ -39,28 +39,28 @@ pub fn create_next_handshake_packet(session: &mut Session, challenge: &Credentia
         SessionState::UninitializedKnownPeer => {
             // If we have not sent or received anything yet, send Hello
             // and set the state to SentHello.
-            let handshake_nonce = crypto_box::gen_nonce();
+            let nonce = crypto_box::gen_nonce();
             let shared_secret_key = shared_secret_from_keys(
                         &session.my_temp_sk, &session.their_perm_pk);
             session.state = SessionState::SentHello {
-                handshake_nonce: handshake_nonce,
                 shared_secret_key: shared_secret_key,
                 };
-            Some(create_hello(session, &handshake_nonce, &challenge, false, data))
+            Some(create_hello(session, &nonce, &challenge, false, data))
         },
-        SessionState::SentHello { handshake_nonce, .. } => {
+        SessionState::SentHello { .. } => {
             // If we already sent Hello but nothing else, and not received
             // anything, repeat the Hello and keep the state unchanged.
-            Some(create_hello(session, &handshake_nonce, &challenge, true, data))
+            let nonce = crypto_box::gen_nonce();
+            Some(create_hello(session, &nonce, &challenge, true, data))
         },
-        SessionState::ReceivedHello { their_temp_pk, handshake_nonce, shared_secret_key } => {
+        SessionState::ReceivedHello { their_temp_pk, shared_secret_key } => {
             // If we received an Hello but nothing else, and did not
             // send any reply to the Hello, send Key and set the state
             // to SentKey
-            let packet = create_key(session, &handshake_nonce, &shared_secret_key, false, data);
+            let nonce = crypto_box::gen_nonce();
+            let packet = create_key(session, &nonce, &shared_secret_key, false, data);
             session.state = SessionState::SentKey {
                 their_temp_pk: their_temp_pk,
-                handshake_nonce: handshake_nonce,
                 shared_secret_key: shared_secret_key,
                 };
             Some(packet)
@@ -68,11 +68,12 @@ pub fn create_next_handshake_packet(session: &mut Session, challenge: &Credentia
         SessionState::WaitingKey { .. } => {
             None
         },
-        SessionState::SentKey { handshake_nonce, shared_secret_key, .. } => {
+        SessionState::SentKey { shared_secret_key, .. } => {
             // If we received an Hello but nothing else, and did not send
             // anything other than key, repeat Key and keep the state
             // unchanged.
-            Some(create_key(session, &handshake_nonce, &shared_secret_key, true, data))
+            let nonce = crypto_box::gen_nonce();
+            Some(create_key(session, &nonce, &shared_secret_key, true, data))
         },
         SessionState::Established { .. } => {
             panic!("Tried to create an handshake packet for an established session.")
@@ -260,12 +261,12 @@ pub fn parse_hello_packet<Peer: Clone>(
         _ => panic!("Non-hello handshake packet passed to parse_hello_packet"),
     };
 
-    let (their_temp_pk, nonce, peer, data) =
+    let (their_temp_pk, peer, data) =
             try!(authenticate_packet_author(session, password_store, packet));
 
     // Below, we are sure this packet is from this peer.
     session.state = update_session_state_on_received_hello(
-                    session, packet, their_temp_pk, nonce);
+                    session, packet, their_temp_pk);
     Ok((peer.clone(), data))
 }
 
@@ -289,7 +290,7 @@ pub fn parse_authnone_hello_packet(
         Ok((their_temp_pk, data)) => {
             // authentication succeeded
             session.state = update_session_state_on_received_hello(
-                            session, packet, their_temp_pk, nonce);
+                            session, packet, their_temp_pk);
             Ok(data)
         }
         Err(_) => {
@@ -339,7 +340,6 @@ fn update_session_state_on_received_hello(
         session: &mut Session,
         packet: &HandshakePacket,
         their_temp_pk: PublicKey,
-        nonce: Nonce,
         ) -> SessionState {
     // This function is a huge case disjunction. I am very sorry if you
     // have to read this, but we have to do it at some point.
@@ -353,7 +353,6 @@ fn update_session_state_on_received_hello(
                 // I win. Keep my hello.
                 SessionState::WaitingKey {
                     their_temp_pk: their_temp_pk,
-                    handshake_nonce: nonce,
                     shared_secret_key: shared_secret_key,
                     }
             }
@@ -362,7 +361,6 @@ fn update_session_state_on_received_hello(
                 session.reset();
                 SessionState::ReceivedHello {
                     their_temp_pk: their_temp_pk,
-                    handshake_nonce: nonce, // Important! We use *their* nonce and discard ours
                     shared_secret_key: shared_secret_from_keys(
                             &session.my_perm_sk, &their_temp_pk),
                     }
@@ -371,7 +369,6 @@ fn update_session_state_on_received_hello(
         SessionState::UninitializedUnknownPeer => {
             SessionState::ReceivedHello {
                 their_temp_pk: their_temp_pk,
-                handshake_nonce: nonce,
                 shared_secret_key: shared_secret_from_keys(
                         &session.my_perm_sk, &their_temp_pk),
                 }
@@ -385,7 +382,6 @@ fn update_session_state_on_received_hello(
             session.reset();
             SessionState::ReceivedHello {
                 their_temp_pk: their_temp_pk,
-                handshake_nonce: nonce,
                 shared_secret_key: shared_secret_from_keys(
                         &session.my_perm_sk, &their_temp_pk),
                 }
@@ -430,7 +426,7 @@ fn authenticate_packet_author<'a, Peer: Clone>(
         session: &Session,
         password_store: &'a PasswordStore<Peer>,
         packet: &HandshakePacket,
-        ) -> Result<(PublicKey, Nonce, &'a Peer, Vec<u8>), AuthFailure> { 
+        ) -> Result<(PublicKey, &'a Peer, Vec<u8>), AuthFailure> {
     let mut hash_code = [0u8; 7];
     hash_code.copy_from_slice(&packet.auth_challenge()[1..8]);
     let candidates_opt = match packet.auth_challenge()[0] {
@@ -468,7 +464,7 @@ fn authenticate_packet_author<'a, Peer: Clone>(
                 password, &session.my_perm_sk, &their_perm_pk);
         match open_packet_end(packet.sealed_data(), &shared_secret_key, &nonce) {
             Ok((their_temp_pk, data)) => {
-                return Ok((their_temp_pk, nonce, peer, data))
+                return Ok((their_temp_pk, peer, data))
             }
             Err(_) => {
             }
