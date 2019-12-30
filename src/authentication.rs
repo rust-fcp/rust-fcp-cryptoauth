@@ -2,7 +2,7 @@
 //! https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#authorization-challenges
 //! and
 //! https://github.com/cjdelisle/cjdns/blob/cjdns-v17.4/doc/Whitepaper.md#authentication-field
-//! 
+//!
 //! # Examples
 //!
 //! None credentials:
@@ -61,21 +61,17 @@
 extern crate rust_sodium;
 use rust_sodium::randombytes::randombytes;
 
-use session::Session;
 use cryptography::crypto_box::PrecomputedKey;
 use cryptography::sha256;
 use cryptography::{shared_secret_from_keys, shared_secret_from_password};
+use session::Session;
 
 /// Used for specifying authorization credentials of a peer,
 /// either oneself or an incoming peer.
 ///
 /// Represents an authorization method and its data, as defined by
 /// https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#authorization-challenges
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(Hash)]
-#[derive(Eq)]
-#[derive(PartialEq)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub enum Credentials {
     /// This is the preferred credentials method, with a login and
     /// a password.
@@ -97,7 +93,7 @@ pub enum Credentials {
         /// The password which will be combined with keys of other
         /// peers to prove who we are.
         password: Vec<u8>,
-        },
+    },
 
     /// Password-only credentials. This method is not recommended
     /// and may be dropped in the future. See
@@ -109,8 +105,8 @@ pub enum Credentials {
         ///
         /// Seven bytes of its double-sha256 hash are sent unencrypted
         /// before authentication.
-        password: Vec<u8>
-        },
+        password: Vec<u8>,
+    },
 
     /// Pseudo-credentials used for when authorization is not needed.
     /// Do not use it for outgoing connections.
@@ -135,8 +131,7 @@ impl ToAuthChallenge for Credentials {
                 // https://github.com/cjdelisle/cjdns/blob/cjdns-v17.4/doc/Whitepaper.md#authtype-zero
                 let bytes = randombytes(11);
                 [
-                    0,        bytes[0], bytes[1], bytes[2],
-                    bytes[3], bytes[4], bytes[5], bytes[6],
+                    0, bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
                     bytes[7], bytes[8], bytes[9], bytes[10],
                 ]
             }
@@ -148,19 +143,18 @@ impl ToAuthChallenge for Credentials {
                 let hashed_password = sha256::hash(&password).0;
                 let hash = sha256::hash(&hashed_password).0;
                 [
-                    1,       hash[1], hash[2], hash[3],
-                    hash[4], hash[5], hash[6], hash[7],
-                    0,       0,       0,       0,
+                    1, hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7], 0, 0, 0, 0,
                 ]
-            },
-            Credentials::LoginPassword { password: _, ref login } => {
+            }
+            Credentials::LoginPassword {
+                password: _,
+                ref login,
+            } => {
                 let hash = sha256::hash(&login).0;
                 [
-                    2,       hash[1], hash[2], hash[3],
-                    hash[4], hash[5], hash[6], hash[7],
-                    0,       0,       0,       0,
+                    2, hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7], 0, 0, 0, 0,
                 ]
-            },
+            }
         }
     }
 
@@ -168,11 +162,12 @@ impl ToAuthChallenge for Credentials {
         match *self {
             Credentials::None => {
                 shared_secret_from_keys(&session.my_perm_sk, &session.their_perm_pk)
-            },
-            Credentials::Password { ref password } |
-            Credentials::LoginPassword { ref password, login: _ } => {
-                shared_secret_from_password(password, &session.my_perm_sk, &session.their_perm_pk)
             }
+            Credentials::Password { ref password }
+            | Credentials::LoginPassword {
+                ref password,
+                login: _,
+            } => shared_secret_from_password(password, &session.my_perm_sk, &session.their_perm_pk),
         }
     }
 }

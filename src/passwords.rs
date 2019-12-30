@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use cryptography::sha256;
 use authentication::Credentials;
+use cryptography::sha256;
 
 pub struct PasswordStore<Peer: Clone> {
     // sha256(sha256(password))[1..7] -> (password, peer)
@@ -12,7 +12,10 @@ pub struct PasswordStore<Peer: Clone> {
 
 impl<Peer: Clone> PasswordStore<Peer> {
     pub fn new() -> PasswordStore<Peer> {
-        PasswordStore { password_peers: HashMap::new(), login_peers: HashMap::new() }
+        PasswordStore {
+            password_peers: HashMap::new(),
+            login_peers: HashMap::new(),
+        }
     }
 
     fn add_password_peer(&mut self, password: Vec<u8>, peer: Peer) {
@@ -54,12 +57,18 @@ impl<Peer: Clone> PasswordStore<Peer> {
     }
 
     /// Returns all peers whose sha256(sha256(password))[1..7] match
-    pub fn get_candidate_peers_from_password_doublehash_slice(&self, doublehashed_password_slice: &[u8; 7]) -> Option<&Vec<(Vec<u8>, Peer)>> {
+    pub fn get_candidate_peers_from_password_doublehash_slice(
+        &self,
+        doublehashed_password_slice: &[u8; 7],
+    ) -> Option<&Vec<(Vec<u8>, Peer)>> {
         self.password_peers.get(doublehashed_password_slice)
     }
 
     /// Returns all peers whose sha256(login)[1..7] match
-    pub fn get_candidate_peers_from_login_hash_slice(&self, hashed_login_slice: &[u8; 7]) -> Option<&Vec<(Vec<u8>, Peer)>> {
+    pub fn get_candidate_peers_from_login_hash_slice(
+        &self,
+        hashed_login_slice: &[u8; 7],
+    ) -> Option<&Vec<(Vec<u8>, Peer)>> {
         self.login_peers.get(hashed_login_slice)
     }
 }
@@ -69,7 +78,9 @@ impl<PeerId: Clone> From<HashMap<Credentials, PeerId>> for PasswordStore<PeerId>
         let mut store = PasswordStore::new();
         for (credentials, peer_id) in map.drain() {
             match credentials {
-                Credentials::LoginPassword { login, password } => store.add_peer(Some(&login), password, peer_id),
+                Credentials::LoginPassword { login, password } => {
+                    store.add_peer(Some(&login), password, peer_id)
+                }
                 Credentials::Password { password } => store.add_peer(None, password, peer_id),
                 Credentials::None => unimplemented!(),
             }

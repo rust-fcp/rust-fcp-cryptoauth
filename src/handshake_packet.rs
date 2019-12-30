@@ -38,7 +38,7 @@
 //!         3, 3, 3, 3,  3, 3, 3, 3,  3, 3, 3, 3,  3, 3, 3, 3,
 //!         3, 3, 3, 3,  3, 3, 3, 3,
 //!
-//!         // message authentication code 
+//!         // message authentication code
 //!                                   4, 4, 4, 4,  4, 4, 4, 4,
 //!         4, 4, 4, 4,  4, 4, 4, 4,
 //!
@@ -52,21 +52,18 @@
 //!         ])
 //! ```
 
-extern crate hex;
 extern crate byteorder;
+extern crate hex;
 use std::fmt;
 
-use hex::ToHex;
 use handshake_packet::byteorder::ByteOrder;
-use keys::ToBase32;
+use hex::ToHex;
 use keys::crypto_box::PublicKey;
+use keys::ToBase32;
 
 /// Represents the CryptoAuth session state, as defined by
 /// https://github.com/fc00/spec/blob/10b349ab11/cryptoauth.md#protocol
-#[derive(Eq)]
-#[derive(PartialEq)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub enum HandshakePacketType {
     Hello,       // 0u32
     RepeatHello, // 1u32
@@ -82,15 +79,14 @@ pub enum HandshakePacketType {
 pub(crate) fn peek_perm_pub_key(packet: &[u8]) -> Result<[u8; 32], bool> {
     if packet.len() < 120 {
         Err(false)
-    }
-    else {
+    } else {
         let packet_type = byteorder::BigEndian::read_u32(&packet[0..4]);
         match packet_type {
             0u32 | 1u32 | 2u32 | 3u32 => {
                 let mut sender_perm_pub_key = [0u8; 32];
                 sender_perm_pub_key.copy_from_slice(&packet[40..72]);
                 Ok(sender_perm_pub_key)
-            },
+            }
             _ => Err(true),
         }
     }
@@ -104,7 +100,9 @@ pub struct HandshakePacket {
 
 impl fmt::Debug for HandshakePacket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "HandshakePacket {{
+        write!(
+            f,
+            "HandshakePacket {{
         raw:                     0x{},
         packet_type:             {:?},
         auth_challenge:          0x{} ({:?}),
@@ -119,11 +117,12 @@ impl fmt::Debug for HandshakePacket {
             self.auth_challenge().to_vec().to_hex(),
             self.auth_challenge(),
             self.random_nonce().to_vec().to_hex(),
-            self.sender_perm_pub_key().to_vec().to_hex(), PublicKey(self.sender_perm_pub_key()).to_base32(),
+            self.sender_perm_pub_key().to_vec().to_hex(),
+            PublicKey(self.sender_perm_pub_key()).to_base32(),
             self.msg_auth_code().to_vec().to_hex(),
             self.sender_encrypted_temp_pub_key().to_vec().to_hex(),
             self.encrypted_data().to_vec().to_hex()
-            )
+        )
     }
 }
 
@@ -131,8 +130,7 @@ impl HandshakePacket {
     pub fn new_from_raw(raw: Vec<u8>) -> Result<HandshakePacket, Vec<u8>> {
         if raw.len() < 120 {
             Err(raw)
-        }
-        else {
+        } else {
             Ok(HandshakePacket { raw })
         }
     }
@@ -280,7 +278,10 @@ impl HandshakePacketBuilder {
 
     /// Sets the packet's sender temporary public key, provided encrypted and
     /// as a byte array.
-    pub fn sender_encrypted_temp_pub_key(mut self, sender_encrypted_temp_pub_key: &[u8; 32]) -> HandshakePacketBuilder {
+    pub fn sender_encrypted_temp_pub_key(
+        mut self,
+        sender_encrypted_temp_pub_key: &[u8; 32],
+    ) -> HandshakePacketBuilder {
         self.sender_encrypted_temp_pub_key = true;
         self.raw[88..120].clone_from_slice(sender_encrypted_temp_pub_key);
         self
@@ -308,12 +309,18 @@ impl HandshakePacketBuilder {
     /// Each of the items of the array being a boolean set to true if and only
     /// if the corresponding mandatory field was provided.
     pub fn finalize(self) -> Result<HandshakePacket, [bool; 6]> {
-        let booleans = [self.packet_type, self.auth_challenge, self.random_nonce, self.sender_perm_pub_key, self.msg_auth_code, self.sender_encrypted_temp_pub_key];
+        let booleans = [
+            self.packet_type,
+            self.auth_challenge,
+            self.random_nonce,
+            self.sender_perm_pub_key,
+            self.msg_auth_code,
+            self.sender_encrypted_temp_pub_key,
+        ];
         if booleans.contains(&false) {
             Err(booleans)
-        }
-        else {
-            Ok(HandshakePacket { raw: self.raw, })
+        } else {
+            Ok(HandshakePacket { raw: self.raw })
         }
     }
 }

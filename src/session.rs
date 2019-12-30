@@ -4,28 +4,35 @@
 use std::fmt;
 
 use cryptography::crypto_box;
-use cryptography::crypto_box::{PublicKey, SecretKey, PrecomputedKey};
+use cryptography::crypto_box::{PrecomputedKey, PublicKey, SecretKey};
 
-#[derive(Debug)]
-#[derive(Clone)]
-#[derive(Eq)]
-#[derive(PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SessionState {
     UninitializedUnknownPeer,
     UninitializedKnownPeer,
-    SentHello { shared_secret_key: PrecomputedKey },
-    ReceivedHello { their_temp_pk: PublicKey, shared_secret_key: PrecomputedKey },
-    WaitingKey { their_temp_pk: PublicKey, shared_secret_key: PrecomputedKey }, // When we received a Hello from a lower key, don't send an Hello because it would reset their session
-    SentKey { their_temp_pk: PublicKey, shared_secret_key: PrecomputedKey },
+    SentHello {
+        shared_secret_key: PrecomputedKey,
+    },
+    ReceivedHello {
+        their_temp_pk: PublicKey,
+        shared_secret_key: PrecomputedKey,
+    },
+    WaitingKey {
+        their_temp_pk: PublicKey,
+        shared_secret_key: PrecomputedKey,
+    }, // When we received a Hello from a lower key, don't send an Hello because it would reset their session
+    SentKey {
+        their_temp_pk: PublicKey,
+        shared_secret_key: PrecomputedKey,
+    },
     Established {
         their_temp_pk: PublicKey,
         /// Used to open RepeatKey packets
         handshake_shared_secret_key: PrecomputedKey,
         shared_secret_key: PrecomputedKey,
-        initiator_is_me: bool
+        initiator_is_me: bool,
     },
 }
-
 
 /// Stores the state of a CryptoAuth session (nonce, permanent keys,
 /// temporary keys).
@@ -54,7 +61,12 @@ impl Session {
     /// Creates a new session using permanent keys.
     /// 'initiator' determines whether we are the one to send the Hello packet
     /// (and receive the Key packet)
-    pub fn new(my_pk: PublicKey, my_sk: SecretKey, their_pk: PublicKey, initial_state: SessionState) -> Session {
+    pub fn new(
+        my_pk: PublicKey,
+        my_sk: SecretKey,
+        their_pk: PublicKey,
+        initial_state: SessionState,
+    ) -> Session {
         // Temporary keys used only for this session.
         let (my_temp_pk, my_temp_sk) = crypto_box::gen_keypair();
 

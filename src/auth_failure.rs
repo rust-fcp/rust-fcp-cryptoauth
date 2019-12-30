@@ -1,10 +1,6 @@
-
 /// Enumeration used for reporting errors in authenticating
 /// a handshake or a data packet.
-#[derive(Debug)]
-#[derive(Clone)]
-#[derive(Eq)]
-#[derive(PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum AuthFailure {
     /// An incoming peer tried an auth method that is not None/Password/LoginPassword
     UnknownAuthMethod(u8),

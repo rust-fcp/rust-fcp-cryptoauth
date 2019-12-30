@@ -1,34 +1,31 @@
-extern crate hex;
 extern crate byteorder;
+extern crate hex;
 extern crate rust_sodium;
 
 pub mod auth_failure;
-pub mod cryptography;
-pub mod passwords;
-pub mod keys;
-pub mod handshake_packet;
-pub mod session;
 pub mod authentication;
-pub mod handshake;
 pub mod connection;
 pub mod connection_state;
+pub mod cryptography;
+pub mod handshake;
+pub mod handshake_packet;
+pub mod keys;
+pub mod passwords;
+pub mod session;
 
+pub use keys::{publickey_to_ipv6addr, FromBase32, FromHex};
 
-pub use keys::{FromBase32, FromHex, publickey_to_ipv6addr};
-
+use byteorder::{BigEndian, ByteOrder};
 use std::collections::HashMap;
-use byteorder::{ByteOrder, BigEndian};
 
+use handshake_packet::{peek_perm_pub_key, HandshakePacket, HandshakePacketType};
 use passwords::PasswordStore;
 use session::{Session, SessionState};
-use handshake_packet::{HandshakePacket, HandshakePacketType, peek_perm_pub_key};
 
-pub use authentication::Credentials;
 pub use auth_failure::AuthFailure;
-pub use cryptography::{PublicKey, SecretKey, gen_keypair};
+pub use authentication::Credentials;
 pub use connection_state::ConnectionState;
-
-
+pub use cryptography::{gen_keypair, PublicKey, SecretKey};
 
 /// Initializes fcp_cryptoauth. Must be called before any
 /// feature is used.
@@ -89,14 +86,14 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
     /// In the FCP, this is used for all inner (end-to-end) CA sessions,
     /// and never for outer (point-to-point) sessions.
     pub fn new_outgoing_connection(
-            my_pk: PublicKey, my_sk: SecretKey,
-            their_pk: PublicKey,
-            my_credentials: Credentials,
-            allowed_peers: Option<HashMap<Credentials, PeerId>>,
-            peer_id: PeerId,
-            session_handle: Option<u32>,
-            ) -> CAWrapper<PeerId> {
-
+        my_pk: PublicKey,
+        my_sk: SecretKey,
+        their_pk: PublicKey,
+        my_credentials: Credentials,
+        allowed_peers: Option<HashMap<Credentials, PeerId>>,
+        peer_id: PeerId,
+        session_handle: Option<u32>,
+    ) -> CAWrapper<PeerId> {
         let password_store = allowed_peers.map(PasswordStore::from);
 
         CAWrapper {
@@ -109,16 +106,26 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
         }
     }
 
-    fn parse_hello(session: &mut Session, password_store: &Option<PasswordStore<PeerId>>, packet: &HandshakePacket) -> Result<(Option<PeerId>, Vec<u8>), AuthFailure> {
+    fn parse_hello(
+        session: &mut Session,
+        password_store: &Option<PasswordStore<PeerId>>,
+        packet: &HandshakePacket,
+    ) -> Result<(Option<PeerId>, Vec<u8>), AuthFailure> {
         match *password_store {
             Some(ref password_store) => {
-                 let (peer_id, data) = try!(handshake::parse_hello_packet(session, password_store, &packet));
-                 Ok((Some(peer_id.clone()), data))
-            },
-            None => Ok((None, try!(handshake::parse_authnone_hello_packet(session, &packet)))),
+                let (peer_id, data) = try!(handshake::parse_hello_packet(
+                    session,
+                    password_store,
+                    &packet
+                ));
+                Ok((Some(peer_id.clone()), data))
+            }
+            None => Ok((
+                None,
+                try!(handshake::parse_authnone_hello_packet(session, &packet)),
+            )),
         }
     }
-
 
     /// Creates a new `CAWrapper` for a connection initiated by the peer.
     ///
@@ -138,18 +145,23 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
     /// Hello packet or the peer is not in the `allowed_peers`.
     /// Otherwise, returns `Ok((wrapper, piggybacked_message))`.
     pub fn new_incoming_connection(
-            my_pk: PublicKey, my_sk: SecretKey,
-            my_credentials: Credentials,
-            allowed_peers: Option<HashMap<Credentials, PeerId>>,
-            session_handle: Option<u32>,
-            packet: Vec<u8>,
-            ) -> Result<(CAWrapper<PeerId>, Vec<u8>), AuthFailure> {
-
+        my_pk: PublicKey,
+        my_sk: SecretKey,
+        my_credentials: Credentials,
+        allowed_peers: Option<HashMap<Credentials, PeerId>>,
+        session_handle: Option<u32>,
+        packet: Vec<u8>,
+    ) -> Result<(CAWrapper<PeerId>, Vec<u8>), AuthFailure> {
         let packet = HandshakePacket::new_from_raw(packet).unwrap();
 
         match packet.packet_type() {
             Ok(HandshakePacketType::Hello) | Ok(HandshakePacketType::RepeatHello) => (),
-            _ => return Err(AuthFailure::UnexpectedPacket(format!("Incoming connection started with a non-Hello packet ({:?}).", packet.packet_type()))),
+            _ => {
+                return Err(AuthFailure::UnexpectedPacket(format!(
+                    "Incoming connection started with a non-Hello packet ({:?}).",
+                    packet.packet_type()
+                )))
+            }
         }
 
         let password_store = allowed_peers.map(PasswordStore::from);
@@ -158,9 +170,17 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
             None => panic!("pre_parse_hello_packet should not return None on Hello packets.'"),
         };
         let mut session = Session::new(
-                my_pk, my_sk, their_pk, SessionState::UninitializedUnknownPeer);
+            my_pk,
+            my_sk,
+            their_pk,
+            SessionState::UninitializedUnknownPeer,
+        );
 
-        let (peer_id, content) = try!(CAWrapper::parse_hello(&mut session, &password_store, &packet));
+        let (peer_id, content) = try!(CAWrapper::parse_hello(
+            &mut session,
+            &password_store,
+            &packet
+        ));
 
         let mut wrapper = CAWrapper {
             my_credentials: my_credentials,
@@ -194,11 +214,16 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
     pub fn wrap_message(&mut self, msg: &[u8]) -> Vec<Vec<u8>> {
         let mut packets = self.upkeep();
         match self.session.state {
-            SessionState::Established { ref shared_secret_key, ref initiator_is_me, .. } => {
-                packets.push(connection::seal_message(
-                        &mut self.session.my_last_nonce, shared_secret_key, *initiator_is_me, msg))
-
-            }
+            SessionState::Established {
+                ref shared_secret_key,
+                ref initiator_is_me,
+                ..
+            } => packets.push(connection::seal_message(
+                &mut self.session.my_last_nonce,
+                shared_secret_key,
+                *initiator_is_me,
+                msg,
+            )),
             _ => {} // forward-secrecy not yet available.
         };
         if self.session.my_last_nonce >= 0xfffffff0 {
@@ -213,11 +238,11 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
         match self.my_session_handle {
             None => msg.to_vec(), // TODO: do not copy
             Some(handle) => {
-                let mut final_msg = vec![0; msg.len()+4];
+                let mut final_msg = vec![0; msg.len() + 4];
                 BigEndian::write_u32(&mut final_msg[0..4], handle);
                 final_msg[4..].copy_from_slice(msg); // TODO: do not copy
                 final_msg
-            },
+            }
         }
     }
 
@@ -235,22 +260,31 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
         match self.session.state {
             SessionState::UninitializedUnknownPeer => {
                 panic!("A CAWrapper's Session state should never be UninitializedUnknownPeer.")
-            },
-            SessionState::UninitializedKnownPeer |
-            SessionState::SentHello { .. } |
-            SessionState::ReceivedHello { .. } |
-            SessionState::WaitingKey { .. } |
-            SessionState::SentKey { .. } => {
+            }
+            SessionState::UninitializedKnownPeer
+            | SessionState::SentHello { .. }
+            | SessionState::ReceivedHello { .. }
+            | SessionState::WaitingKey { .. }
+            | SessionState::SentKey { .. } => {
                 let final_msg = self.prefix_session_handle(msg);
-                if let Some(packet) = handshake::create_next_handshake_packet(&mut self.session, &self.my_credentials, &final_msg) {
+                if let Some(packet) = handshake::create_next_handshake_packet(
+                    &mut self.session,
+                    &self.my_credentials,
+                    &final_msg,
+                ) {
                     packets.push(packet.raw);
                 }
-            },
-            SessionState::Established { ref shared_secret_key, ref initiator_is_me, .. } => {
-                packets.push(connection::seal_message(
-                        &mut self.session.my_last_nonce, &shared_secret_key, *initiator_is_me, msg))
-
-            },
+            }
+            SessionState::Established {
+                ref shared_secret_key,
+                ref initiator_is_me,
+                ..
+            } => packets.push(connection::seal_message(
+                &mut self.session.my_last_nonce,
+                &shared_secret_key,
+                *initiator_is_me,
+                msg,
+            )),
         };
         if self.session.my_last_nonce >= 0xfffffff0 {
             // Little nonce space left
@@ -269,90 +303,107 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
                 let new_content = content[4..].to_vec(); // TODO: do not copy
                 (handle, new_content)
             }
-            None => (None, content)
+            None => (None, content),
         }
     }
 
-    fn unwrap_data_packet(&mut self, packet_first_four_bytes: u32, packet: Vec<u8>) -> Result<Vec<Vec<u8>>, AuthFailure> {
+    fn unwrap_data_packet(
+        &mut self,
+        packet_first_four_bytes: u32,
+        packet: Vec<u8>,
+    ) -> Result<Vec<Vec<u8>>, AuthFailure> {
         handshake::finalize(&mut self.session);
         match self.session.state {
-            SessionState::UninitializedUnknownPeer |
-            SessionState::UninitializedKnownPeer |
-            SessionState::SentHello { .. } |
-            SessionState::WaitingKey { .. } |
-            SessionState::ReceivedHello { .. } => {
+            SessionState::UninitializedUnknownPeer
+            | SessionState::UninitializedKnownPeer
+            | SessionState::SentHello { .. }
+            | SessionState::WaitingKey { .. }
+            | SessionState::ReceivedHello { .. } => {
                 if packet_first_four_bytes == 0 {
-                    Err(AuthFailure::PacketTooShort(format!("Size: {}, but I am in state {:?}", packet.len(), self.session.state)))
-                }
-                else {
+                    Err(AuthFailure::PacketTooShort(format!(
+                        "Size: {}, but I am in state {:?}",
+                        packet.len(),
+                        self.session.state
+                    )))
+                } else {
                     Err(AuthFailure::UnexpectedPacket(format!("Received a non-handshake packet while doing handshake (first four bytes: {:?}u32)", packet_first_four_bytes)))
                 }
-            },
-            SessionState::SentKey { ref shared_secret_key, .. } => {
+            }
+            SessionState::SentKey {
+                ref shared_secret_key,
+                ..
+            } => {
                 // TODO: factorize with Established
                 let content = try!(connection::open_packet(
-                        &mut self.session.their_nonce_offset,
-                        &mut self.session.their_nonce_bitfield,
-                        &shared_secret_key,
-                        false,
-                        &packet));
+                    &mut self.session.their_nonce_offset,
+                    &mut self.session.their_nonce_bitfield,
+                    &shared_secret_key,
+                    false,
+                    &packet
+                ));
                 let (handle, new_content) = self.extract_session_handle(content);
                 self.peer_session_handle = handle;
                 Ok(vec![new_content])
-            },
-            SessionState::Established { ref shared_secret_key, ref initiator_is_me, .. } => {
-                Ok(vec![try!(connection::open_packet(
-                        &mut self.session.their_nonce_offset,
-                        &mut self.session.their_nonce_bitfield,
-                        &shared_secret_key,
-                        *initiator_is_me,
-                        &packet))])
-            },
+            }
+            SessionState::Established {
+                ref shared_secret_key,
+                ref initiator_is_me,
+                ..
+            } => Ok(vec![try!(connection::open_packet(
+                &mut self.session.their_nonce_offset,
+                &mut self.session.their_nonce_bitfield,
+                &shared_secret_key,
+                *initiator_is_me,
+                &packet
+            ))]),
         }
     }
 
-
     fn unwrap_hello_packet(&mut self, packet: Vec<u8>) -> Result<Vec<Vec<u8>>, AuthFailure> {
         let (peer_id, content) = try!(CAWrapper::parse_hello(
-                &mut self.session, &self.password_store, &HandshakePacket { raw: packet }));
+            &mut self.session,
+            &self.password_store,
+            &HandshakePacket { raw: packet }
+        ));
         let (handle, new_content) = self.extract_session_handle(content);
         self.peer_session_handle = handle;
         self.peer_id = peer_id.clone();
 
         if new_content.len() == 0 {
             Ok(Vec::new())
-        }
-        else {
+        } else {
             Ok(vec![new_content])
         }
     }
 
     fn unwrap_key_packet(&mut self, packet: Vec<u8>) -> Result<Vec<Vec<u8>>, AuthFailure> {
-        match self.session.state.clone() { // TODO: do not clone
-            SessionState::UninitializedUnknownPeer |
-            SessionState::UninitializedKnownPeer |
-            SessionState::ReceivedHello { .. } => {
-                Err(AuthFailure::UnexpectedPacket("Received a key packet while expecting a hello.".to_owned()))
-            },
-            SessionState::SentKey { .. } => {
-                Err(AuthFailure::UnexpectedPacket("Received a key packet while expecting a data packet.".to_owned()))
-            },
-            SessionState::WaitingKey { .. } |
-            SessionState::SentHello { .. } |
-            SessionState::Established { .. } => {
+        match self.session.state.clone() {
+            // TODO: do not clone
+            SessionState::UninitializedUnknownPeer
+            | SessionState::UninitializedKnownPeer
+            | SessionState::ReceivedHello { .. } => Err(AuthFailure::UnexpectedPacket(
+                "Received a key packet while expecting a hello.".to_owned(),
+            )),
+            SessionState::SentKey { .. } => Err(AuthFailure::UnexpectedPacket(
+                "Received a key packet while expecting a data packet.".to_owned(),
+            )),
+            SessionState::WaitingKey { .. }
+            | SessionState::SentHello { .. }
+            | SessionState::Established { .. } => {
                 let content = try!(handshake::parse_key_packet(
-                        &mut self.session, &HandshakePacket { raw: packet }));
+                    &mut self.session,
+                    &HandshakePacket { raw: packet }
+                ));
 
                 let (handle, new_content) = self.extract_session_handle(content);
                 self.peer_session_handle = handle;
 
                 if new_content.len() == 0 {
                     Ok(Vec::new())
-                }
-                else {
+                } else {
                     Ok(vec![new_content])
                 }
-            },
+            }
         }
     }
 
@@ -381,8 +432,7 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
             // avoids having a temporary HandshakePacket object
             // that is broken (eg. panics if printed)
             (packet, Err(0))
-        }
-        else {
+        } else {
             // May be a handshake packet
             let handshake_packet = HandshakePacket { raw: packet };
             let packet_type = handshake_packet.packet_type();
@@ -393,13 +443,13 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
             Err(packet_first_four_bytes) => {
                 // Not a handshake packet
                 self.unwrap_data_packet(packet_first_four_bytes, packet)
-            },
+            }
             Ok(HandshakePacketType::Hello) | Ok(HandshakePacketType::RepeatHello) => {
                 self.unwrap_hello_packet(packet)
             }
             Ok(HandshakePacketType::Key) | Ok(HandshakePacketType::RepeatKey) => {
                 self.unwrap_key_packet(packet)
-            },
+            }
         }
     }
 
@@ -415,23 +465,24 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
         match self.session.state {
             SessionState::UninitializedUnknownPeer => {
                 panic!("A CAWrapper's Session state should never be UninitializedUnknownPeer.")
-            },
-            SessionState::UninitializedKnownPeer |
-            SessionState::SentHello { .. } |
-            SessionState::WaitingKey { .. } |
-            SessionState::ReceivedHello { .. } |
-            SessionState::SentKey { .. } => {
+            }
+            SessionState::UninitializedKnownPeer
+            | SessionState::SentHello { .. }
+            | SessionState::WaitingKey { .. }
+            | SessionState::ReceivedHello { .. }
+            | SessionState::SentKey { .. } => {
                 let msg = self.prefix_session_handle(&vec![]);
-                if let Some(packet) = handshake::create_next_handshake_packet(&mut self.session, &self.my_credentials, &msg) {
+                if let Some(packet) = handshake::create_next_handshake_packet(
+                    &mut self.session,
+                    &self.my_credentials,
+                    &msg,
+                ) {
                     vec![packet.raw]
-                }
-                else {
+                } else {
                     vec![]
                 }
-            },
-            SessionState::Established { .. } => {
-                vec![]
-            },
+            }
+            SessionState::Established { .. } => vec![],
         }
     }
 
