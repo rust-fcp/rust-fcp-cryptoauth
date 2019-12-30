@@ -5,6 +5,7 @@ use std::fmt;
 
 use cryptography::crypto_box;
 use cryptography::crypto_box::{PrecomputedKey, PublicKey, SecretKey};
+use keys::ToBase32;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SessionState {
@@ -53,7 +54,11 @@ pub struct Session {
 
 impl fmt::Debug for Session {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Session {{ ... }}")
+        f.debug_struct("fcp_cryptoauth::Session")
+            .field("state", &self.state)
+            .field("my_perm_pk", &self.my_perm_pk.to_base32())
+            .field("their_perm_pk", &self.their_perm_pk.to_base32())
+            .finish()
     }
 }
 

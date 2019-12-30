@@ -15,8 +15,10 @@ pub mod session;
 
 pub use keys::{publickey_to_ipv6addr, FromBase32, FromHex};
 
-use byteorder::{BigEndian, ByteOrder};
 use std::collections::HashMap;
+use std::fmt;
+
+use byteorder::{BigEndian, ByteOrder};
 
 use handshake_packet::{peek_perm_pub_key, HandshakePacket, HandshakePacketType};
 use passwords::PasswordStore;
@@ -504,5 +506,16 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
     /// Returns the peer id of the other peer.
     pub fn peer_session_handle(&self) -> Option<u32> {
         self.peer_session_handle.clone()
+    }
+}
+
+impl<PeerId: Clone + fmt::Debug> fmt::Debug for CAWrapper<PeerId> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("fcp_cryptoauth::CAWrapper")
+            .field("peer_id", &self.peer_id)
+            .field("my_session_handle", &self.my_session_handle)
+            .field("peer_session_handle", &self.peer_session_handle)
+            .field("session", &self.session)
+            .finish()
     }
 }
