@@ -50,7 +50,7 @@ pub fn main() {
     sock.send_to(&bytes, dest).unwrap();
 
     let mut buf = vec![0u8; 1024];
-    let (nb_bytes, addr) = sock.recv_from(&mut buf).unwrap();
+    let (nb_bytes, _addr) = sock.recv_from(&mut buf).unwrap();
     println!("Received {} bytes", nb_bytes);
     buf.truncate(nb_bytes);
     let packet = HandshakePacket { raw: buf };
@@ -77,11 +77,11 @@ pub fn main() {
         sock.send_to(&bytes, dest).unwrap();
 
         let mut buf = vec![0u8; 1024];
-        let (nb_bytes, addr) = sock.recv_from(&mut buf).unwrap();
+        let (nb_bytes, _addr) = sock.recv_from(&mut buf).unwrap();
         println!("Received {} bytes", nb_bytes);
         buf.truncate(nb_bytes);
         let packet = HandshakePacket { raw: buf };
         assert_eq!(packet.packet_type(), Err(4));
-        let buf = packet.raw;
+        let _buf = packet.raw;
     }
 }
