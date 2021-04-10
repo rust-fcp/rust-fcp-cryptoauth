@@ -5,8 +5,6 @@ extern crate rust_sodium;
 use rust_sodium::crypto::box_::curve25519xsalsa20poly1305::{PublicKey, SecretKey};
 use std::net::{IpAddr, Ipv6Addr, SocketAddr, UdpSocket};
 
-use hex::ToHex;
-
 use fcp_cryptoauth::authentication::Credentials;
 use fcp_cryptoauth::handshake::{create_next_handshake_packet, parse_handshake_packet};
 use fcp_cryptoauth::handshake_packet::{HandshakePacket, HandshakePacketType};

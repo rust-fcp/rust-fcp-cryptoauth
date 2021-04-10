@@ -57,7 +57,6 @@ extern crate hex;
 use std::fmt;
 
 use handshake_packet::byteorder::ByteOrder;
-use hex::ToHex;
 use keys::crypto_box::PublicKey;
 use keys::ToBase32;
 
@@ -112,16 +111,16 @@ impl fmt::Debug for HandshakePacket {
         sender_enc_temp_pub_key: 0x{},
         encrypted_data:          0x{}
         }}",
-            self.raw.to_vec().to_hex(),
+            hex::encode(self.raw.to_vec()),
             self.packet_type(),
-            self.auth_challenge().to_vec().to_hex(),
+            hex::encode(self.auth_challenge().to_vec()),
             self.auth_challenge(),
-            self.random_nonce().to_vec().to_hex(),
-            self.sender_perm_pub_key().to_vec().to_hex(),
+            hex::encode(self.random_nonce().to_vec()),
+            hex::encode(self.sender_perm_pub_key().to_vec()),
             PublicKey(self.sender_perm_pub_key()).to_base32(),
-            self.msg_auth_code().to_vec().to_hex(),
-            self.sender_encrypted_temp_pub_key().to_vec().to_hex(),
-            self.encrypted_data().to_vec().to_hex()
+            hex::encode(self.msg_auth_code().to_vec()),
+            hex::encode(self.sender_encrypted_temp_pub_key().to_vec()),
+            hex::encode(self.encrypted_data().to_vec())
         )
     }
 }

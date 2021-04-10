@@ -6,8 +6,6 @@ use std::net::{IpAddr, Ipv6Addr, SocketAddr, UdpSocket};
 
 use fcp_cryptoauth::*;
 
-use hex::ToHex;
-
 pub fn main() {
     fcp_cryptoauth::init();
 
@@ -51,9 +49,9 @@ pub fn main() {
     let (nb_bytes, _addr) = sock.recv_from(&mut buf).unwrap();
     assert!(nb_bytes < 1024);
     buf.truncate(nb_bytes);
-    println!("Received packet: {}", buf.to_hex());
+    println!("Received packet: {}", hex::encode(&buf));
     for message in conn.unwrap_message(buf).unwrap() {
-        println!("Received message: {}", message.to_hex());
+        println!("Received message: {}", hex::encode(&message));
     }
 
     println!("2");
@@ -66,9 +64,9 @@ pub fn main() {
     let (nb_bytes, _addr) = sock.recv_from(&mut buf).unwrap();
     assert!(nb_bytes < 1024);
     buf.truncate(nb_bytes);
-    println!("Received packet: {}", buf.to_hex());
+    println!("Received packet: {}", hex::encode(&buf));
     for message in conn.unwrap_message(buf).unwrap() {
-        println!("Received message: {}", message.to_hex());
+        println!("Received message: {}", hex::encode(&message));
     }
 
     println!("3");
@@ -81,9 +79,9 @@ pub fn main() {
     let (nb_bytes, _addr) = sock.recv_from(&mut buf).unwrap();
     assert!(nb_bytes < 1024);
     buf.truncate(nb_bytes);
-    println!("Received packet: {}", buf.to_hex());
+    println!("Received packet: {}", hex::encode(&buf));
     for message in conn.unwrap_message(buf).unwrap() {
-        println!("Received message: {}", message.to_hex());
+        println!("Received message: {}", hex::encode(&message));
     }
 
     for i in 4.. {
@@ -100,9 +98,9 @@ pub fn main() {
         let (nb_bytes, _addr) = sock.recv_from(&mut buf).unwrap();
         assert!(nb_bytes < 1024);
         buf.truncate(nb_bytes);
-        println!("Received packet: {}", buf.to_hex());
+        println!("Received packet: {}", hex::encode(&buf));
         for message in conn.unwrap_message(buf).unwrap() {
-            println!("Received message: {}", message.to_hex());
+            println!("Received message: {}", hex::encode(&message));
         }
     }
 }

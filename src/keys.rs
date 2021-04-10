@@ -4,8 +4,6 @@ use rust_sodium::crypto::hash::sha512;
 use std::net::Ipv6Addr;
 
 pub use cryptography::crypto_box;
-use hex::FromHex as VecFromHex;
-use hex::ToHex as VecToHex;
 
 pub const PUBLIC_KEY_BYTES: usize = crypto_box::PUBLICKEYBYTES;
 pub const SECRET_KEY_BYTES: usize = crypto_box::SECRETKEYBYTES;
@@ -220,7 +218,7 @@ pub fn publickey_to_ipv6addr(pk: &crypto_box::PublicKey) -> Ipv6Addr {
 
 impl FromHex for crypto_box::SecretKey {
     fn from_hex(characters: &[u8]) -> Option<crypto_box::SecretKey> {
-        let res = Vec::from_hex(characters);
+        let res = hex::decode(characters);
         match res {
             Ok(vec) => {
                 if vec.len() == 32 {
@@ -238,7 +236,7 @@ impl FromHex for crypto_box::SecretKey {
 
 impl ToHex for crypto_box::SecretKey {
     fn to_hex(&self) -> String {
-        self.0.to_hex()
+        hex::encode(self.0)
     }
 }
 
@@ -246,5 +244,5 @@ impl ToHex for crypto_box::SecretKey {
 fn test_hex() {
     // Required for the result of SecretKey::to_hex() to always be
     // 64 characters.
-    assert_eq!(vec![0, 0].to_hex(), "0000");
+    assert_eq!(hex::encode(vec![0, 0]), "0000");
 }
