@@ -21,7 +21,8 @@ pub fn shared_secret_from_password(
     let product = scalarmult::scalarmult(
         &scalarmult::Scalar::from_slice(&my_perm_sk.0).unwrap(),
         &scalarmult::GroupElement::from_slice(&their_perm_pk.0).unwrap(),
-    );
+    )
+    .expect("their_perm_pk should not be zeroed");
     let mut shared_secret_preimage = product.0.to_vec();
     shared_secret_preimage.extend(&sha256::hash(password).0);
     let shared_secret = sha256::hash(&shared_secret_preimage).0;

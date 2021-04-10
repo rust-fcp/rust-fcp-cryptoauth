@@ -35,7 +35,7 @@ pub use cryptography::{gen_keypair, PublicKey, SecretKey};
 /// Actually, its only purpose is to initialize the cryptographic
 /// library.
 pub fn init() {
-    rust_sodium::init();
+    rust_sodium::init().expect("rust_sodium::init returned error");
 }
 
 /// Takes a peek at a Key packet to get the public key of its sender.
