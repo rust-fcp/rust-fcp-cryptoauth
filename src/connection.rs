@@ -68,11 +68,11 @@ pub fn open_packet(
             "Could not decrypt packet.".to_owned(),
         )),
         Ok(msg) => {
-            try!(check_packet_nonce(
+            check_packet_nonce(
                 their_nonce_offset,
                 their_nonce_bitfield,
                 &packet_nonce
-            ));
+            )?;
             Ok(msg)
         }
     }

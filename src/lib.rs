@@ -115,16 +115,16 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
     ) -> Result<(Option<PeerId>, Vec<u8>), AuthFailure> {
         match *password_store {
             Some(ref password_store) => {
-                let (peer_id, data) = try!(handshake::parse_hello_packet(
+                let (peer_id, data) = handshake::parse_hello_packet(
                     session,
                     password_store,
                     &packet
-                ));
+                )?;
                 Ok((Some(peer_id.clone()), data))
             }
             None => Ok((
                 None,
-                try!(handshake::parse_authnone_hello_packet(session, &packet)),
+                handshake::parse_authnone_hello_packet(session, &packet)?,
             )),
         }
     }
@@ -178,11 +178,11 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
             SessionState::UninitializedUnknownPeer,
         );
 
-        let (peer_id, content) = try!(CAWrapper::parse_hello(
+        let (peer_id, content) = CAWrapper::parse_hello(
             &mut session,
             &password_store,
             &packet
-        ));
+        )?;
 
         let mut wrapper = CAWrapper {
             my_credentials: my_credentials,
@@ -336,13 +336,13 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
                 ..
             } => {
                 // TODO: factorize with Established
-                let content = try!(connection::open_packet(
+                let content = connection::open_packet(
                     &mut self.session.their_nonce_offset,
                     &mut self.session.their_nonce_bitfield,
                     &shared_secret_key,
                     false,
                     &packet
-                ));
+                )?;
                 let (handle, new_content) = self.extract_session_handle(content);
                 self.peer_session_handle = handle;
                 Ok(vec![new_content])
@@ -351,22 +351,22 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
                 ref shared_secret_key,
                 ref initiator_is_me,
                 ..
-            } => Ok(vec![try!(connection::open_packet(
+            } => Ok(vec![connection::open_packet(
                 &mut self.session.their_nonce_offset,
                 &mut self.session.their_nonce_bitfield,
                 &shared_secret_key,
                 *initiator_is_me,
                 &packet
-            ))]),
+            )?]),
         }
     }
 
     fn unwrap_hello_packet(&mut self, packet: Vec<u8>) -> Result<Vec<Vec<u8>>, AuthFailure> {
-        let (peer_id, content) = try!(CAWrapper::parse_hello(
+        let (peer_id, content) = CAWrapper::parse_hello(
             &mut self.session,
             &self.password_store,
             &HandshakePacket { raw: packet }
-        ));
+        )?;
         let (handle, new_content) = self.extract_session_handle(content);
         self.peer_session_handle = handle;
         self.peer_id = peer_id.clone();
@@ -392,10 +392,10 @@ impl<PeerId: Clone> CAWrapper<PeerId> {
             SessionState::WaitingKey { .. }
             | SessionState::SentHello { .. }
             | SessionState::Established { .. } => {
-                let content = try!(handshake::parse_key_packet(
+                let content = handshake::parse_key_packet(
                     &mut self.session,
                     &HandshakePacket { raw: packet }
-                ));
+                )?;
 
                 let (handle, new_content) = self.extract_session_handle(content);
                 self.peer_session_handle = handle;

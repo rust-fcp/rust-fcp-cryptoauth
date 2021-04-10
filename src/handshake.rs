@@ -226,11 +226,11 @@ pub fn parse_handshake_packet<Peer: Clone>(
 
     match packet_type {
         HandshakePacketType::Hello | HandshakePacketType::RepeatHello => {
-            let (peer, data) = try!(parse_hello_packet(session, password_store, packet));
+            let (peer, data) = parse_hello_packet(session, password_store, packet)?;
             Ok((Some(peer), data))
         }
         HandshakePacketType::Key | HandshakePacketType::RepeatKey => {
-            let data = try!(parse_key_packet(session, packet));
+            let data = parse_key_packet(session, packet)?;
             Ok((None, data))
         }
     }
@@ -271,7 +271,7 @@ pub fn parse_hello_packet<Peer: Clone>(
     };
 
     let (their_temp_pk, peer, data) =
-        try!(authenticate_packet_author(session, password_store, packet));
+        authenticate_packet_author(session, password_store, packet)?;
 
     // Below, we are sure this packet is from this peer.
     session.state = update_session_state_on_received_hello(session, packet, their_temp_pk);
