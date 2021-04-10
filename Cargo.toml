@@ -1,6 +1,6 @@
 [package]
 name = "fcp_cryptoauth"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Valentin Lorentz <progval+fcp@progval.net>"]
 description = "Implementation of the Futuristic Connectivity Protocol's CryptoAuth layer (cryptographic authentication and encryption over unreliable channels)."
 license = "MIT"
